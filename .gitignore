@@ -1,0 +1,26 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Runtime artifacts
+logs/
+whatsapp-server/logs/
+whatsapp-server/sessions/
+*.log
+
+# Node artifacts
+whatsapp-server/node_modules/
+
+# Local config / IDE
+.env
+.vscode/
+.idea/
+*.code-workspace
+
+# Test / cache artifacts
+.pytest_cache/
+.mypy_cache/
+coverage.xml
+htmlcov/
