@@ -198,6 +198,75 @@ class ProxyRotator:
                 'last_test': time.time(),
                 'error': str(e)
             }
+
+    def _parse_proxy_url(self, proxy_url: str) -> Proxy:
+        """Parse proxy URL back into Proxy object"""
+        try:
+            # Handle socks5:// or http://
+            if proxy_url.startswith('socks5://'):
+                proxy_type = 'socks5'
+                url_part = proxy_url[9:]  # Remove 'socks5://'
+            elif proxy_url.startswith('http://'):
+                proxy_type = 'http'
+                url_part = proxy_url[7:]  # Remove 'http://'
+            else:
+                # Default to http if no scheme
+                proxy_type = 'http'
+                url_part = proxy_url
+            
+            # Split authentication from host:port
+            if '@' in url_part:
+                auth_part, host_part = url_part.split('@', 1)
+                if ':' in auth_part:
+                    username, password = auth_part.split(':', 1)
+                else:
+                    username = auth_part
+                    password = None
+            else:
+                host_part = url_part
+                username = None
+                password = None
+            
+            # Split host:port
+            if host_part.startswith('['):
+                # IPv6 address with port: [::1]:1080 or [::1]
+                end_bracket = host_part.find(']')
+                if end_bracket == -1:
+                    # Malformed, treat as regular host
+                    host, port_str = host_part.rsplit(':', 1)
+                else:
+                    host = host_part[1:end_bracket]  # Remove brackets
+                    # The rest after the bracket should be ':port' or empty
+                    rest = host_part[end_bracket+1:]
+                    if rest.startswith(':'):
+                        port_str = rest[1:]
+                    else:
+                        # No port specified
+                        port_str = None
+            else:
+                # Not an IPv6 address, use the existing logic
+                if ':' in host_part:
+                    host, port_str = host_part.rsplit(':', 1)
+                else:
+                    host = host_part
+                    port_str = None
+
+            if port_str is not None:
+                port = int(port_str)
+            else:
+                port = 1080 if proxy_type == 'socks5' else 8080  # Default ports
+            
+            return Proxy(
+                type=proxy_type,
+                host=host,
+                port=port,
+                username=username,
+                password=password
+            )
+        except Exception as e:
+            logger.error(f"Failed to parse proxy URL {proxy_url}: {e}")
+            # Return a default proxy to avoid crashing
+            return Proxy(type='http', host='127.0.0.1', port=8080)
     
     def mark_proxy_failed(self, proxy_url: str):
         """Mark proxy as failed (immediate health update)"""

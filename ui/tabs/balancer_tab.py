@@ -34,6 +34,7 @@ class BalancerTab(ctk.CTkFrame):
     self.api = BaileysAPI()
     self.accounts_file = "accounts_config.json"
     self.accounts = self.load_accounts()
+    self.accounts_lock = threading.Lock()
     self.monitoring_active = False
     self.stop_event = threading.Event()
     
@@ -239,24 +240,25 @@ class BalancerTab(ctk.CTkFrame):
 
     api_accounts = res.get("accounts", [])
     added = 0
-    existing_names = {a['name'] for a in self.accounts}
+    with self.accounts_lock:
+        existing_names = {a['name'] for a in self.accounts}
 
-    for acc in api_accounts:
-        name = acc.get("account")
-        if name and name not in existing_names:
-            new_acc = {
-                "name": name,
-                "phone": "Unknown",
-                "instance_id": 0,
-                "status": "active",
-                "health_score": 100,
-                "sent_today": 0,
-                "success_rate": 100,
-                "risk_score": 0,
-                "last_activity": "Just now"
-            }
-            self.accounts.append(new_acc)
-            added += 1
+        for acc in api_accounts:
+            name = acc.get("account")
+            if name and name not in existing_names:
+                new_acc = {
+                    "name": name,
+                    "phone": "Unknown",
+                    "instance_id": 0,
+                    "status": "active",
+                    "health_score": 100,
+                    "sent_today": 0,
+                    "success_rate": 100,
+                    "risk_score": 0,
+                    "last_activity": "Just now"
+                }
+                self.accounts.append(new_acc)
+                added += 1
     
     if added > 0:
         self.save_accounts()
@@ -268,8 +270,9 @@ class BalancerTab(ctk.CTkFrame):
   def save_accounts(self):
     """Save accounts to config file"""
     try:
-      with open(self.accounts_file, 'w') as f:
-        json.dump(self.accounts, f, indent=2)
+      with self.accounts_lock:
+        with open(self.accounts_file, 'w') as f:
+          json.dump(self.accounts, f, indent=2)
       
       messagebox.showinfo("Success", "Configuration saved successfully!")
       self.add_log(" Configuration saved", "success")
@@ -282,15 +285,16 @@ class BalancerTab(ctk.CTkFrame):
     for widget in self.accounts_container.winfo_children():
       widget.destroy()
     
-    if not self.accounts:
-      ctk.CTkLabel(self.accounts_container, 
-            text="No accounts configured.\nClick 'Add Account' to start.",
-            font=body(TYPOGRAPHY["body"]), text_color=COLORS["text_muted"]).pack(pady=50, padx=20)
-      return
-    
-    # Create account cards
-    for account in self.accounts:
-      self.create_account_card(account)
+    with self.accounts_lock:
+        if not self.accounts:
+          ctk.CTkLabel(self.accounts_container, 
+                text="No accounts configured.\nClick 'Add Account' to start.",
+                font=body(TYPOGRAPHY["body"]), text_color=COLORS["text_muted"]).pack(pady=50, padx=20)
+          return
+        
+        # Create account cards
+        for account in self.accounts:
+          self.create_account_card(account)
     
     self.update_stats()
     self.update_system_status_board()
@@ -532,7 +536,8 @@ class BalancerTab(ctk.CTkFrame):
         "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
       }
       
-      self.accounts.append(account)
+      with self.accounts_lock:
+        self.accounts.append(account)
       self.save_accounts()
       self.refresh_accounts()
       self.add_log(f" Added account: {name}", "success")
@@ -550,12 +555,13 @@ class BalancerTab(ctk.CTkFrame):
   
   def toggle_account(self, account):
     """Toggle account active/paused"""
-    if account['status'] == 'active':
-      account['status'] = 'paused'
-      self.add_log(f"⏸ Paused account: {account['name']}", "warning")
-    else:
-      account['status'] = 'active'
-      self.add_log(f"▶ Activated account: {account['name']}", "success")
+    with self.accounts_lock:
+        if account['status'] == 'active':
+          account['status'] = 'paused'
+          self.add_log(f"⏸ Paused account: {account['name']}", "warning")
+        else:
+          account['status'] = 'active'
+          self.add_log(f"▶ Activated account: {account['name']}", "success")
     
     self.refresh_accounts()
   
@@ -563,67 +569,71 @@ class BalancerTab(ctk.CTkFrame):
     """Delete account"""
     if messagebox.askyesno("Confirm Delete", 
                f"Delete account '{account['name']}'?\nThis cannot be undone."):
-      self.accounts.remove(account)
+      with self.accounts_lock:
+        self.accounts.remove(account)
       self.save_accounts()
       self.refresh_accounts()
       self.add_log(f" Deleted account: {account['name']}", "error")
   
   def activate_all(self):
     """Activate all accounts"""
-    for account in self.accounts:
-      if account['status'] != 'blocked':
-        account['status'] = 'active'
+    with self.accounts_lock:
+        for account in self.accounts:
+          if account['status'] != 'blocked':
+            account['status'] = 'active'
     
     self.refresh_accounts()
     self.add_log("▶ All accounts activated", "success")
   
   def pause_all(self):
     """Pause all accounts"""
-    for account in self.accounts:
-      if account['status'] == 'active':
-        account['status'] = 'paused'
+    with self.accounts_lock:
+        for account in self.accounts:
+          if account['status'] == 'active':
+            account['status'] = 'paused'
     
     self.refresh_accounts()
     self.add_log("⏸ All accounts paused", "warning")
   
   def rebalance_load(self):
     """Rebalance account load based on current settings and simple health/risk rules."""
-    if not self.accounts:
-      messagebox.showinfo("Balancer", "No accounts configured to rebalance.")
-      return
+    with self.accounts_lock:
+        if not self.accounts:
+          messagebox.showinfo("Balancer", "No accounts configured to rebalance.")
+          return
 
-    # Optionally auto‑pause very risky active accounts.
-    if self.auto_pause_risky.get():
-      for account in self.accounts:
-        if account.get("status") == "active" and account.get("risk_score", 0) >= 80:
-          account["status"] = "paused"
-          self.add_log(f" Auto-paused {account['name']} during rebalance (high risk)", "warning")
+        # Optionally auto‑pause very risky active accounts.
+        if self.auto_pause_risky.get():
+          for account in self.accounts:
+            if account.get("status") == "active" and account.get("risk_score", 0) >= 80:
+              account["status"] = "paused"
+              self.add_log(f" Auto-paused {account['name']} during rebalance (high risk)", "warning")
 
-    # Optionally auto‑reactivate healthier, low‑risk accounts.
-    if self.auto_reactivate.get():
-      for account in self.accounts:
-        if account.get("status") in {"paused", "offline"}:
-          if account.get("risk_score", 0) < 40 and account.get("health_score", 0) >= 70:
-            account["status"] = "active"
+        # Optionally auto‑reactivate healthier, low‑risk accounts.
+        if self.auto_reactivate.get():
+          for account in self.accounts:
+            if account.get("status") in {"paused", "offline"}:
+              if account.get("risk_score", 0) < 40 and account.get("health_score", 0) >= 70:
+                account["status"] = "active"
 
-    # As a fallback, ensure at least one non‑blocked account is active.
-    active_accounts = [a for a in self.accounts if a.get("status") == "active"]
-    if not active_accounts:
-      # Pick the healthiest, lowest‑risk non‑blocked account.
-      candidates = [
-        a for a in self.accounts
-        if a.get("status") != "blocked"
-      ]
-      if candidates:
-        best = max(
-          candidates,
-          key=lambda a: (
-            a.get("health_score", 0),
-            -a.get("risk_score", 0),
-          ),
-        )
-        best["status"] = "active"
-        self.add_log(f"▶ Activated {best['name']} as primary sender after rebalance", "success")
+        # As a fallback, ensure at least one non‑blocked account is active.
+        active_accounts = [a for a in self.accounts if a.get("status") == "active"]
+        if not active_accounts:
+          # Pick the healthiest, lowest‑risk non‑blocked account.
+          candidates = [
+            a for a in self.accounts
+            if a.get("status") != "blocked"
+          ]
+          if candidates:
+            best = max(
+              candidates,
+              key=lambda a: (
+                a.get("health_score", 0),
+                -a.get("risk_score", 0),
+              ),
+            )
+            best["status"] = "active"
+            self.add_log(f"▶ Activated {best['name']} as primary sender after rebalance", "success")
 
     self.refresh_accounts()
     self.add_log(" Rebalanced account load using current strategy", "info")
@@ -701,7 +711,7 @@ class BalancerTab(ctk.CTkFrame):
           account["last_activity"] = datetime.now().strftime("%H:%M")
 
           # Auto-pause if risky
-          if self.auto_pause_risky.get() and account["risk_score"] > 80:
+          if self.auto_pause_risky.get() and account.get("risk_score", 0) > 80:
             account["status"] = "paused"
             self.add_log(f" Auto-paused {account['name']} (high risk)", "warning")
 

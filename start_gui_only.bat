@@ -1,7 +1,6 @@
 @echo off
 echo ========================================
-echo SmartSafe V27 - WhatsApp Server
+echo SmartSafe V27 - GUI Only
 echo ========================================
 echo.
-cd whatsapp-server
-npm start
+python main.py

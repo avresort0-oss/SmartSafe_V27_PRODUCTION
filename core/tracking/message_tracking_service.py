@@ -94,6 +94,11 @@ class SQLiteAdapter:
         self.db_path = db_path
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
+        
+        # Performance optimizations
+        self.conn.execute("PRAGMA journal_mode=WAL")
+        self.conn.execute("PRAGMA synchronous=NORMAL")
+        self.conn.execute("PRAGMA temp_store=MEMORY")
 
     def execute(self, sql: str, params: tuple = ()) -> DbCursor:
         return self.conn.execute(sql, params)
@@ -212,6 +217,10 @@ class MessageTrackingService:
             self.db.execute("CREATE INDEX IF NOT EXISTS idx_messages_response ON messages(response_received)")
             self.db.execute("CREATE INDEX IF NOT EXISTS idx_events_message ON message_events(message_id)")
             self.db.execute("CREATE INDEX IF NOT EXISTS idx_events_timestamp ON message_events(timestamp)")
+            
+            # Optimizations for time-based and sorted queries
+            self.db.execute("CREATE INDEX IF NOT EXISTS idx_messages_sent_time ON messages(sent_timestamp DESC)")
+            self.db.execute("CREATE INDEX IF NOT EXISTS idx_messages_campaign_time ON messages(campaign_id, sent_timestamp DESC)")
 
             self.db.execute(f"""
                 CREATE TABLE IF NOT EXISTS spam_analytics (
@@ -224,6 +233,7 @@ class MessageTrackingService:
                 )
             """)
             self.db.execute("CREATE INDEX IF NOT EXISTS idx_spam_analytics_message ON spam_analytics(message_id)")
+            self.db.execute("CREATE INDEX IF NOT EXISTS idx_spam_analytics_timestamp ON spam_analytics(timestamp)")
 
             self.db.commit()
     

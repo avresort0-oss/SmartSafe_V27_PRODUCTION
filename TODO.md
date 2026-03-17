@@ -1,47 +1,20 @@
-# Docker + One-Click Cloud Deploy - Implementation TODO
+# SmartSafe V27 QR Fix & Perf Optimization TODO
 
-## Plan Breakdown (Approved by User)
+## Current Task: Fix QR Login Tab (Real QR) + Ensure Superfast
 
-**Status: [IN PROGRESS - Step 1 COMPLETE]**
+### Steps
 
-### Step 1: Create Core Docker Files ✅
+- [ ] **1. Create TODO.md** ✅ *Done*
+- [ ] **2. Edit ui/tabs/qr_login_tab.py**
+  - Add "New Session" account option (fresh Baileys session)
+  - Custom session name input
+  - On select: api.connect_account(session_name) → real QR
+  - Hide/remove demo "default" QR
+  - Mimic MultiAccount real QR flow
+- [ ] **3. Test QR Tab**: New Session → Real QR appears → Scan works
+- [ ] **4. Verify Perf**: No added lag (threading unchanged)
+- [ ] **5. attempt_completion**
 
-- [x] Create `Dockerfile.python` (GUI + backend)
-- [x] Create `Dockerfile.node` (WhatsApp server)
-- [x] Create `docker-compose.yml` (orchestration)
-- [ ] Test: `docker compose up --build`
+**Perf Status**: Already optimized (daemons/async/UI batches).
 
-### Step 2: Cloud Deploy Configs ✅
-
-- [x] Create `render.yaml` (Render Blueprint)
-- [x] Create `railway.json` (Railway config)
-- [x] Create `deploy.sh` (VPS one-click)
-
-### Step 3: Licensing & Docs ✅
-
-- [x] Create `LICENSE` (MIT)
-- [x] Update `README.md` (Docker + deploy instructions)
-
-### Step 4: Gitignore & Extras ✅
-
-- [x] Update `.gitignore` (Docker cache)
-- [x] Create `.dockerignore`
-
-### Step 5: Test & Verify ✅
-
-- [x] Local Docker setup ready
-- [ ] Run `docker compose up --build`
-- [x] All files created & docs updated
-
-### Step 5: Test & Verify
-
-- [ ] Local test: docker compose up
-- [ ] Health checks: curl ports 4000/8000
-- [ ] Cloud deploy test
-
-### Step 6: Completion
-
-- [ ] attempt_completion
-
-**Next Action:** Step 2 (Cloud configs)
-**Test Command:** `docker compose up --build`
+Proceeding to edit...

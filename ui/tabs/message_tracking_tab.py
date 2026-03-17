@@ -61,7 +61,7 @@ class MessageTrackingTab(ctk.CTkFrame):
         # UI State
         self.stop_event = threading.Event()
         # Slightly slower refresh to reduce load and keep UI smooth.
-        self.refresh_interval = 6  # seconds
+        self.refresh_interval = 10  # seconds - Optimized for performance
         self.current_campaign = ""
         self.selected_time_range = ctk.StringVar(value="24h")
         self.auto_refresh = ctk.BooleanVar(value=True)
@@ -74,7 +74,7 @@ class MessageTrackingTab(ctk.CTkFrame):
         self._build_ui()
         self._start_background_tasks()
         # Defer the initial heavy refresh so the tab can render first.
-        self.after(400, lambda: ui_dispatch(self, self._refresh_data))
+        self.after(400, lambda: start_daemon(self._refresh_data_background))
 
     def _build_ui(self):
         # Header
@@ -451,13 +451,13 @@ class MessageTrackingTab(ctk.CTkFrame):
         while not self.stop_event.is_set():
             try:
                 if self.auto_refresh.get():
-                    ui_dispatch(self, self._refresh_data)
+                    self._refresh_data_background()
                 time.sleep(self.refresh_interval)
             except Exception as e:
                 logger.error(f"Error in auto-refresh loop: {e}")
                 time.sleep(10)
 
-    def _refresh_data(self):
+    def _refresh_data_background(self):
         """Refresh all data"""
         try:
             # Get time range in hours
@@ -469,23 +469,49 @@ class MessageTrackingTab(ctk.CTkFrame):
             metrics = self.response_analytics.get_response_metrics(analytics_campaign_id, hours)
 
             # Update UI
-            self._update_stats(metrics)
-            self._update_analytics(metrics)
+            ui_dispatch(self, lambda: self._update_stats(metrics))
+            ui_dispatch(self, lambda: self._update_analytics(metrics))
             
             list_campaign_id = self.current_campaign if self.current_campaign != "All Campaigns" else None
-            self._update_message_list(list_campaign_id, hours)
+            
+            # Fetch messages in background
+            messages = []
+            if list_campaign_id == "Live Node Data":
+                resp = self.api.get_all_tracked_messages()
+                if resp.get("ok"):
+                    raw_messages = resp.get("messages", {})
+                    if isinstance(raw_messages, dict):
+                        raw_messages = list(raw_messages.values())
+                    messages = self._convert_node_messages(raw_messages)
+            elif list_campaign_id:
+                messages = self.tracking_service.get_messages_by_campaign(list_campaign_id)
+            else:
+                messages = self.tracking_service.get_recent_messages(days=max(1, hours // 24))
+            
+            # Update list UI
+            ui_dispatch(self, lambda: self._update_message_list_ui(messages))
             
             # Update AI insights (in background to not block UI)
-            self._update_ai_insights(analytics_campaign_id, hours)
+            if self.ai_service.enabled:
+                report = self.response_analyzer.analyze_responses_bulk(analytics_campaign_id, hours)
+                ui_dispatch(self, lambda: self._update_ai_insights_ui(report))
             
             # Update predictions
-            self._update_predictions(analytics_campaign_id)
+            prediction = self.predictive_analytics.predict_performance(analytics_campaign_id)
+            risk = self.predictive_analytics.get_risk_assessment(analytics_campaign_id)
+            ui_dispatch(self, lambda: self._update_predictions_ui(prediction, risk))
 
             # Update last update time
             self._last_update = datetime.now(timezone.utc)
 
         except Exception as e:
-            self._log_activity(f"Error refreshing data: {e}")
+            logger.error(f"Background refresh error: {e}")
+            # Don't log to activity UI from background thread loop to avoid spamming/locking
+
+    def _refresh_data(self):
+        """Legacy method wrapper"""
+        start_daemon(self._refresh_data_background)
+
 
     def _update_stats(self, metrics):
         """Update statistics display"""
@@ -533,12 +559,9 @@ class MessageTrackingTab(ctk.CTkFrame):
         self.peak_hours_text.insert("1.0", hours_text)
         self.peak_hours_text.configure(state="disabled")
 
-    def _update_ai_insights(self, campaign_id: Optional[str], hours: int):
-        """Update AI-powered insights"""
+    def _update_ai_insights_ui(self, report):
+        """Update AI insights UI elements"""
         try:
-            # Get bulk response analysis
-            report = self.response_analyzer.analyze_responses_bulk(campaign_id, hours)
-            
             # Update themes
             themes_text = "Key Themes:\n"
             for theme in report.key_themes[:5]:
@@ -570,12 +593,9 @@ class MessageTrackingTab(ctk.CTkFrame):
         except Exception as e:
             logger.error(f"Error updating AI insights: {e}")
 
-    def _update_predictions(self, campaign_id: Optional[str]):
-        """Update prediction data"""
+    def _update_predictions_ui(self, prediction, risk):
+        """Update prediction UI elements"""
         try:
-            # Get performance prediction
-            prediction = self.predictive_analytics.predict_performance(campaign_id)
-            
             # Update prediction stats
             self.pred_response_rate.configure(text=f"{prediction.predicted_response_rate:.1f}%")
             self.pred_confidence.configure(text=f"{prediction.confidence * 100:.0f}%")
@@ -589,8 +609,6 @@ class MessageTrackingTab(ctk.CTkFrame):
             self.best_time_text.configure(state="disabled")
             
             # Update risk assessment
-            risk = self.predictive_analytics.get_risk_assessment(campaign_id)
-            
             risk_text = f"Level: {risk.get('risk_level', 'Unknown').upper()}\n"
             for factor in risk.get('risk_factors', [])[:2]:
                 risk_text += f"• {factor}\n"
@@ -603,29 +621,13 @@ class MessageTrackingTab(ctk.CTkFrame):
         except Exception as e:
             logger.error(f"Error updating predictions: {e}")
 
-    def _update_message_list(self, campaign_id: Optional[str], hours: int):
-        """Update message list display"""
+    def _update_message_list_ui(self, messages):
+        """Update message list UI with pre-fetched messages"""
         # Clear existing items
         for widget in self.message_list_frame.winfo_children():
             widget.destroy()
 
-        # Get messages
         try:
-            if campaign_id == "Live Node Data":
-                resp = self.api.get_all_tracked_messages()
-                if resp.get("ok"):
-                    raw_messages = resp.get("messages", {})
-                    if isinstance(raw_messages, dict):
-                        raw_messages = list(raw_messages.values())
-                    messages = self._convert_node_messages(raw_messages)
-                else:
-                    messages = []
-            elif campaign_id:
-                messages = self.tracking_service.get_messages_by_campaign(campaign_id)
-            else:
-                # Get recent messages
-                messages = self.tracking_service.get_recent_messages(days=max(1, hours // 24))
-            
             if not messages:
                 no_data_label = ctk.CTkLabel(
                     self.message_list_frame,
@@ -768,12 +770,12 @@ class MessageTrackingTab(ctk.CTkFrame):
 
     def _on_time_range_change(self, value):
         """Handle time range change"""
-        self._refresh_data()
+        start_daemon(self._refresh_data_background)
 
     def _on_campaign_change(self, value):
         """Handle campaign change"""
         self.current_campaign = value
-        self._refresh_data()
+        start_daemon(self._refresh_data_background)
 
     def _on_search(self, event):
         """Handle search"""

@@ -225,6 +225,59 @@ class AIService:
             logger.error(f"Error generating suggestion: {e}")
             return self._fallback_suggestion(customer_message)
 
+    def enhance_prompt(self, prompt: str, context: Optional[str] = None) -> str:
+        """
+        Enhance a prompt by providing additional context, clarification, or rephrasing.
+        
+        Args:
+            prompt: The original prompt to enhance
+            context: Optional context about how the prompt will be used
+            
+        Returns:
+            Enhanced prompt with better clarity and context
+        """
+        if not self.enabled:
+            return self._fallback_enhance_prompt(prompt)
+        
+        try:
+            enhancement_prompt = f"""You are a prompt engineering expert. Enhance the following prompt to make it clearer, 
+more specific, and more effective for AI processing.
+
+Original Prompt: {prompt}
+
+{f"Context: {context}" if context else ""}
+
+Provide the enhanced prompt that:
+1. Is more specific and clear
+2. Includes relevant context
+3. Has better structure for AI understanding
+4. Maintains the original intent
+
+Enhanced Prompt:"""
+            
+            response = self._call_ai(enhancement_prompt)
+            # Extract just the enhanced prompt from the response
+            enhanced = response.strip()
+            # If the response contains multiple lines, take the first substantial line
+            lines = [l.strip() for l in enhanced.split('\n') if l.strip() and not l.startswith('Enhanced')]
+            if lines:
+                return lines[0]
+            return enhanced if enhanced else prompt
+            
+        except Exception as e:
+            logger.error(f"Error enhancing prompt: {e}")
+            return self._fallback_enhance_prompt(prompt)
+
+    def _fallback_enhance_prompt(self, prompt: str) -> str:
+        """Fallback prompt enhancement using simple heuristics"""
+        # Simple enhancement: add clarity and structure
+        enhanced = prompt.strip()
+        if not enhanced.endswith(('?', '.', '!')):
+            enhanced += '.'
+        # Capitalize first letter
+        enhanced = enhanced[0].upper() + enhanced[1:]
+        return enhanced
+
     def detect_anomalies(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Detect anomalies in message data

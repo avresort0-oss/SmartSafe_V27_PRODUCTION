@@ -67,49 +67,58 @@ class Tab(ctk.CTkFrame):
 
         # Status Badge
         badge_colors = self._get_badge_colors_from_tone("success")
-        self.header_status_badge = StatusBadge(header.actions, text="ACTIVE", **badge_colors)
+        self.header_status_badge = StatusBadge(
+            header.actions, text="ACTIVE", **badge_colors
+        )
         self.header_status_badge.pack(side="right")
 
         # Main container
         main = ctk.CTkFrame(self, fg_color="transparent")
         main.pack(fill="both", expand=True, padx=SPACING["md"], pady=(0, SPACING["md"]))
         main.grid_columnconfigure(0, weight=1)
-        main.grid_columnconfigure(1, weight=3) # Right panel wider
+        main.grid_columnconfigure(1, weight=3)  # Right panel wider
         main.grid_rowconfigure(0, weight=1)
 
         # --- Left Column (Account List) ---
         left_card = SectionCard(main)
         left_card.grid(row=0, column=0, sticky="nsew", padx=(0, SPACING["xs"]))
-        
-        ctk.CTkLabel(left_card.inner_frame, text="Accounts", font=heading(TYPOGRAPHY["h3"], "bold")).pack(anchor="w", pady=(0, SPACING["sm"]))
-        
-        self.account_list_frame = ctk.CTkScrollableFrame(
+
+        ctk.CTkLabel(
             left_card.inner_frame,
-            fg_color=COLORS["app_bg"],
-            corner_radius=RADIUS["md"]
+            text="Accounts",
+            font=heading(TYPOGRAPHY["h3"], "bold"),
+        ).pack(anchor="w", pady=(0, SPACING["sm"]))
+
+        self.account_list_frame = ctk.CTkScrollableFrame(
+            left_card.inner_frame, fg_color=COLORS["app_bg"], corner_radius=RADIUS["md"]
         )
         self.account_list_frame.pack(fill="both", expand=True)
 
         PrimaryButton(
             left_card.inner_frame,
             text="Add New Account",
-            command=self.add_account_dialog
+            command=self.add_account_dialog,
         ).pack(fill="x", pady=(SPACING["xs"], 0))
 
         # --- Right Column (Details) ---
         right_col = ctk.CTkFrame(main, fg_color="transparent")
         right_col.grid(row=0, column=1, sticky="nsew", padx=(SPACING["xs"], 0))
-        
+
         # Top Actions Bar
         action_card = SectionCard(right_col)
         action_card.pack(fill="x", pady=(0, SPACING["sm"]))
-        
+
         action_grid = ctk.CTkFrame(action_card.inner_frame, fg_color="transparent")
         action_grid.pack(fill="x")
-        
-        self.acc_title = ctk.CTkLabel(action_grid, text="Selected: acc1", font=heading(TYPOGRAPHY["h2"], "bold"), text_color=COLORS["brand"])
+
+        self.acc_title = ctk.CTkLabel(
+            action_grid,
+            text="Selected: acc1",
+            font=heading(TYPOGRAPHY["h2"], "bold"),
+            text_color=COLORS["brand"],
+        )
         self.acc_title.pack(side="left")
-        
+
         SecondaryButton(
             action_grid,
             text="Logout",
@@ -119,16 +128,32 @@ class Tab(ctk.CTkFrame):
             text_color=COLORS["text_inverse"],
             width=80,
         ).pack(side="right", padx=(4, 0))
-        self.auto_btn = SecondaryButton(action_grid, text="Auto: ON", command=self.toggle_auto, width=80)
+        self.auto_btn = SecondaryButton(
+            action_grid, text="Auto: ON", command=self.toggle_auto, width=80
+        )
         self.auto_btn.pack(side="right", padx=(4, 0))
-        SecondaryButton(action_grid, text="Refresh", command=lambda: self.refresh_now(silent=False), width=80).pack(side="right")
+        SecondaryButton(
+            action_grid,
+            text="Refresh",
+            command=lambda: self.refresh_now(silent=False),
+            width=80,
+        ).pack(side="right")
 
         # Status & QR Card
         status_card = SectionCard(right_col)
         status_card.pack(fill="both", expand=True)
-        ctk.CTkLabel(status_card.inner_frame, text="Connection Status", font=heading(TYPOGRAPHY["h3"], "bold")).pack(anchor="w", pady=(0, SPACING["sm"]))
+        ctk.CTkLabel(
+            status_card.inner_frame,
+            text="Connection Status",
+            font=heading(TYPOGRAPHY["h3"], "bold"),
+        ).pack(anchor="w", pady=(0, SPACING["sm"]))
 
-        self.connection_status_label = ctk.CTkLabel(status_card.inner_frame, text="Status: idle", font=heading(TYPOGRAPHY["h2"], "bold"), text_color=COLORS["warning"])
+        self.connection_status_label = ctk.CTkLabel(
+            status_card.inner_frame,
+            text="Status: idle",
+            font=heading(TYPOGRAPHY["h2"], "bold"),
+            text_color=COLORS["warning"],
+        )
         self.connection_status_label.pack(pady=(0, SPACING["sm"]))
 
         self.device_label = ctk.CTkLabel(
@@ -136,57 +161,103 @@ class Tab(ctk.CTkFrame):
             text="Account: -\nNumber: -\nDevice: -\nPlatform: -\nLogin: -\nLast Sync: -",
             justify="left",
             font=body(TYPOGRAPHY["mono"]),
-            text_color=COLORS["text_secondary"]
+            text_color=COLORS["text_secondary"],
         )
         self.device_label.pack(anchor="w", padx=SPACING["md"], pady=SPACING["xs"])
 
-        self.qr_label = ctk.CTkLabel(status_card.inner_frame, text="QR will show here", text_color=COLORS["text_muted"])
+        self.qr_label = ctk.CTkLabel(
+            status_card.inner_frame,
+            text="QR will show here",
+            text_color=COLORS["text_muted"],
+        )
         self.qr_label.pack(pady=SPACING["sm"], expand=True)
 
         # Quick Actions Card
         quick_card = SectionCard(right_col)
         quick_card.pack(fill="x", pady=(0, SPACING["sm"]))
-        ctk.CTkLabel(quick_card.inner_frame, text="Quick Tools", font=heading(TYPOGRAPHY["h3"], "bold")).pack(anchor="w", pady=(0, SPACING["sm"]))
+        ctk.CTkLabel(
+            quick_card.inner_frame,
+            text="Quick Tools",
+            font=heading(TYPOGRAPHY["h3"], "bold"),
+        ).pack(anchor="w", pady=(0, SPACING["sm"]))
 
         # Test Send
-        ctk.CTkLabel(quick_card.inner_frame, text="Test Message", font=body(TYPOGRAPHY["caption"], "bold")).pack(anchor="w", pady=(0, SPACING["xxs"]))
-        self.send_number_entry = StyledInput(quick_card.inner_frame, placeholder_text="Phone (with country code)")
+        ctk.CTkLabel(
+            quick_card.inner_frame,
+            text="Test Message",
+            font=body(TYPOGRAPHY["caption"], "bold"),
+        ).pack(anchor="w", pady=(0, SPACING["xxs"]))
+        self.send_number_entry = StyledInput(
+            quick_card.inner_frame, placeholder_text="Phone (with country code)"
+        )
         self.send_number_entry.pack(fill="x", pady=(0, SPACING["xs"]))
-        self.send_message_entry = StyledInput(quick_card.inner_frame, placeholder_text="Message")
+        self.send_message_entry = StyledInput(
+            quick_card.inner_frame, placeholder_text="Message"
+        )
         self.send_message_entry.pack(fill="x", pady=(0, SPACING["xs"]))
-        
+
         send_row = ctk.CTkFrame(quick_card.inner_frame, fg_color="transparent")
         send_row.pack(fill="x", pady=(0, SPACING["sm"]))
-        SecondaryButton(send_row, text="Send Test", command=self.quick_send).pack(side="left")
-        self.send_status = ctk.CTkLabel(send_row, text="", font=body(TYPOGRAPHY["caption"]), text_color=COLORS["text_muted"])
+        SecondaryButton(send_row, text="Send Test", command=self.quick_send).pack(
+            side="left"
+        )
+        self.send_status = ctk.CTkLabel(
+            send_row,
+            text="",
+            font=body(TYPOGRAPHY["caption"]),
+            text_color=COLORS["text_muted"],
+        )
         self.send_status.pack(side="left", padx=SPACING["xs"])
 
         # Profile Check
-        ctk.CTkLabel(quick_card.inner_frame, text="Quick Profile Check", font=body(TYPOGRAPHY["caption"], "bold")).pack(anchor="w", pady=(0, SPACING["xxs"]))
-        self.profile_number_entry = StyledInput(quick_card.inner_frame, placeholder_text="Phone (with country code)")
+        ctk.CTkLabel(
+            quick_card.inner_frame,
+            text="Quick Profile Check",
+            font=body(TYPOGRAPHY["caption"], "bold"),
+        ).pack(anchor="w", pady=(0, SPACING["xxs"]))
+        self.profile_number_entry = StyledInput(
+            quick_card.inner_frame, placeholder_text="Phone (with country code)"
+        )
         self.profile_number_entry.pack(fill="x", pady=(0, SPACING["xs"]))
-        
+
         check_row = ctk.CTkFrame(quick_card.inner_frame, fg_color="transparent")
         check_row.pack(fill="x")
-        SecondaryButton(check_row, text="Check Profile", command=self.quick_profile_check).pack(side="left")
-        self.profile_status = ctk.CTkLabel(check_row, text="", font=body(TYPOGRAPHY["caption"]), text_color=COLORS["text_muted"])
+        SecondaryButton(
+            check_row, text="Check Profile", command=self.quick_profile_check
+        ).pack(side="left")
+        self.profile_status = ctk.CTkLabel(
+            check_row,
+            text="",
+            font=body(TYPOGRAPHY["caption"]),
+            text_color=COLORS["text_muted"],
+        )
         self.profile_status.pack(side="left", padx=SPACING["xs"])
 
         # ========== Smart Anti-Ban Controls ==========
-        ctk.CTkLabel(quick_card.inner_frame, text="🛡️ Smart Anti-Ban", font=body(TYPOGRAPHY["caption"], "bold")).pack(anchor="w", pady=(SPACING["md"], SPACING["xxs"]))
+        ctk.CTkLabel(
+            quick_card.inner_frame,
+            text="🛡️ Smart Anti-Ban",
+            font=body(TYPOGRAPHY["caption"], "bold"),
+        ).pack(anchor="w", pady=(SPACING["md"], SPACING["xxs"]))
 
         # Read Receipts Toggle
         receipt_frame = ctk.CTkFrame(quick_card.inner_frame, fg_color="transparent")
         receipt_frame.pack(fill="x", pady=(0, SPACING["xs"]))
-        ctk.CTkLabel(receipt_frame, text="Read Receipts:", font=body(TYPOGRAPHY["caption"])).pack(side="left")
-        self.read_receipts_var = ctk.BooleanVar(value=SETTINGS.read_receipt_mode != 'off')
-        ctk.CTkSwitch(receipt_frame, text="", variable=self.read_receipts_var, width=50).pack(side="right")
+        ctk.CTkLabel(
+            receipt_frame, text="Read Receipts:", font=body(TYPOGRAPHY["caption"])
+        ).pack(side="left")
+        self.read_receipts_var = ctk.BooleanVar(
+            value=SETTINGS.read_receipt_mode != "off"
+        )
+        ctk.CTkSwitch(
+            receipt_frame, text="", variable=self.read_receipts_var, width=50
+        ).pack(side="right")
 
         # Backup Button
         backup_btn = SecondaryButton(
             quick_card.inner_frame,
             text="💾 Backup Session",
-            command=self.backup_session
+            command=self.backup_session,
         )
         backup_btn.pack(fill="x", pady=(0, SPACING["sm"]))
 
@@ -195,7 +266,7 @@ class Tab(ctk.CTkFrame):
             quick_card.inner_frame,
             text="Proxy: Loading...",
             font=body(TYPOGRAPHY["caption"]),
-            text_color=COLORS["text_muted"]
+            text_color=COLORS["text_muted"],
         )
         self.proxy_status_label.pack(anchor="w")
 
@@ -208,7 +279,7 @@ class Tab(ctk.CTkFrame):
             font=heading(TYPOGRAPHY["h3"], "bold"),
             text_color=COLORS["brand"],
         ).pack(anchor="w", pady=(0, SPACING["xs"]))
-        
+
         self.monitor_label = StyledTextbox(monitor_card.inner_frame)
         self.monitor_label.pack(fill="both", expand=True)
         self.monitor_label.configure(state="disabled")
@@ -236,18 +307,26 @@ class Tab(ctk.CTkFrame):
 
             end_index = min(start_index + batch_size, len(accounts_snapshot))
             for acc in accounts_snapshot[start_index:end_index]:
-                is_selected = (acc == self.selected_account)
+                is_selected = acc == self.selected_account
 
-                acc_data = next((item for item in self.accounts_data if item.get("name") == acc), {})
+                acc_data = next(
+                    (item for item in self.accounts_data if item.get("name") == acc), {}
+                )
                 phone = acc_data.get("phone", "N/A")
                 status = acc_data.get("status", "offline")
 
                 btn_color = COLORS["brand"] if is_selected else COLORS["surface_2"]
                 text_color = "white" if is_selected else COLORS["text_primary"]
                 subtext_color = "white" if is_selected else COLORS["text_muted"]
-                hover_color = COLORS["brand_hover"] if is_selected else COLORS["surface_3"]
+                hover_color = (
+                    COLORS["brand_hover"] if is_selected else COLORS["surface_3"]
+                )
 
-                card = ctk.CTkFrame(self.account_list_frame, fg_color=btn_color, corner_radius=RADIUS["md"])
+                card = ctk.CTkFrame(
+                    self.account_list_frame,
+                    fg_color=btn_color,
+                    corner_radius=RADIUS["md"],
+                )
                 card.pack(fill="x", pady=SPACING["xxs"], padx=SPACING["xxs"])
 
                 def on_enter(e, c=card, h=hover_color):
@@ -264,14 +343,23 @@ class Tab(ctk.CTkFrame):
                 card.bind("<Button-1>", on_click)
 
                 icon_frame = ctk.CTkFrame(card, fg_color="transparent")
-                icon_frame.pack(side="left", padx=(SPACING["sm"], SPACING["xs"]), pady=SPACING["xs"])
+                icon_frame.pack(
+                    side="left", padx=(SPACING["sm"], SPACING["xs"]), pady=SPACING["xs"]
+                )
                 icon_frame.bind("<Button-1>", on_click)
 
-                icon = ctk.CTkLabel(icon_frame, text="👤", font=heading(TYPOGRAPHY["h2"]), text_color=text_color)
+                icon = ctk.CTkLabel(
+                    icon_frame,
+                    text="👤",
+                    font=heading(TYPOGRAPHY["h2"]),
+                    text_color=text_color,
+                )
                 icon.pack(side="left")
                 icon.bind("<Button-1>", on_click)
 
-                dot_color = COLORS["success"] if status == "active" else COLORS["danger"]
+                dot_color = (
+                    COLORS["success"] if status == "active" else COLORS["danger"]
+                )
                 status_dot = ctk.CTkLabel(
                     icon_frame,
                     text="●",
@@ -282,7 +370,9 @@ class Tab(ctk.CTkFrame):
                 status_dot.bind("<Button-1>", on_click)
 
                 info_frame = ctk.CTkFrame(card, fg_color="transparent")
-                info_frame.pack(side="left", fill="both", expand=True, pady=SPACING["xs"])
+                info_frame.pack(
+                    side="left", fill="both", expand=True, pady=SPACING["xs"]
+                )
                 info_frame.bind("<Button-1>", on_click)
 
                 name_lbl = ctk.CTkLabel(
@@ -340,7 +430,7 @@ class Tab(ctk.CTkFrame):
     def _load_accounts_from_file(self):
         if os.path.exists(self.accounts_file):
             try:
-                with open(self.accounts_file, 'r', encoding='utf-8') as f:
+                with open(self.accounts_file, "r", encoding="utf-8") as f:
                     return json.load(f)
             except (json.JSONDecodeError, IOError):
                 return []
@@ -348,7 +438,7 @@ class Tab(ctk.CTkFrame):
 
     def _save_accounts_to_file(self):
         try:
-            with open(self.accounts_file, 'w', encoding='utf-8') as f:
+            with open(self.accounts_file, "w", encoding="utf-8") as f:
                 json.dump(self.accounts_data, f, indent=2)
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save accounts file: {e}")
@@ -359,7 +449,11 @@ class Tab(ctk.CTkFrame):
         if not result.get("ok"):
             return
 
-        api_accounts = [item.get("account") for item in result.get("accounts", []) if item.get("account")]
+        api_accounts = [
+            item.get("account")
+            for item in result.get("accounts", [])
+            if item.get("account")
+        ]
         if not api_accounts:
             return
 
@@ -367,7 +461,9 @@ class Tab(ctk.CTkFrame):
         current_names = {acc.get("name") for acc in self.accounts_data}
         for acc_name in api_accounts:
             if acc_name not in current_names:
-                self.accounts_data.append({"name": acc_name, "status": "offline", "phone": "N/A"})
+                self.accounts_data.append(
+                    {"name": acc_name, "status": "offline", "phone": "N/A"}
+                )
                 self.accounts.append(acc_name)
                 added = True
 
@@ -378,21 +474,25 @@ class Tab(ctk.CTkFrame):
             self._render_account_list()
 
         ui_dispatch(self, _apply)
-        
+
     def delete_account(self, account_name):
         """Delete an account from the list"""
-        if not messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete '{account_name}'?"):
+        if not messagebox.askyesno(
+            "Confirm Delete", f"Are you sure you want to delete '{account_name}'?"
+        ):
             return
 
         # Remove from memory
         if account_name in self.accounts:
             self.accounts.remove(account_name)
-        
-        self.accounts_data = [acc for acc in self.accounts_data if acc.get("name") != account_name]
-        
+
+        self.accounts_data = [
+            acc for acc in self.accounts_data if acc.get("name") != account_name
+        ]
+
         # Save to disk
         self._save_accounts_to_file()
-        
+
         # Handle selection if we deleted the current account
         if self.selected_account == account_name:
             self.selected_account = self.accounts[0] if self.accounts else None
@@ -403,13 +503,15 @@ class Tab(ctk.CTkFrame):
                 self.acc_title.configure(text="No Accounts")
                 self.device_label.configure(text="No account selected")
                 self.qr_label.configure(image=None, text="")
-                self.connection_status_label.configure(text="---", text_color=COLORS["text_muted"])
-        
+                self.connection_status_label.configure(
+                    text="---", text_color=COLORS["text_muted"]
+                )
+
         self._render_account_list()
 
     def add_log(self, message, level="info"):
         """Add log entry to monitor"""
-        if not hasattr(self, 'monitor_label'):
+        if not hasattr(self, "monitor_label"):
             return
         timestamp = datetime.now().strftime("%H:%M:%S")
         text = f"[{timestamp}] {message}\n"
@@ -429,13 +531,23 @@ class Tab(ctk.CTkFrame):
         content = ctk.CTkFrame(dialog, fg_color="transparent")
         content.pack(fill="both", expand=True, padx=20, pady=20)
 
-        ctk.CTkLabel(content, text="Add New Account", font=heading(TYPOGRAPHY["h2"], "bold")).pack(pady=(0, 20))
+        ctk.CTkLabel(
+            content, text="Add New Account", font=heading(TYPOGRAPHY["h2"], "bold")
+        ).pack(pady=(0, 20))
 
-        ctk.CTkLabel(content, text="Account Name (e.g., acc3, marketing_acc)", font=body(TYPOGRAPHY["body"], "bold")).pack(anchor="w")
+        ctk.CTkLabel(
+            content,
+            text="Account Name (e.g., acc3, marketing_acc)",
+            font=body(TYPOGRAPHY["body"], "bold"),
+        ).pack(anchor="w")
         name_entry = StyledInput(content, placeholder_text="acc3")
         name_entry.pack(fill="x", pady=(4, 12))
 
-        ctk.CTkLabel(content, text="Phone Number (Optional)", font=body(TYPOGRAPHY["body"], "bold")).pack(anchor="w")
+        ctk.CTkLabel(
+            content,
+            text="Phone Number (Optional)",
+            font=body(TYPOGRAPHY["body"], "bold"),
+        ).pack(anchor="w")
         phone_entry = StyledInput(content, placeholder_text="+880...")
         phone_entry.pack(fill="x", pady=(4, 12))
 
@@ -445,11 +557,15 @@ class Tab(ctk.CTkFrame):
         def save_account():
             name = name_entry.get().strip()
             if not name:
-                messagebox.showwarning("Warning", "Account Name is required.", parent=dialog)
+                messagebox.showwarning(
+                    "Warning", "Account Name is required.", parent=dialog
+                )
                 return
 
             if any(acc.get("name") == name for acc in self.accounts_data):
-                messagebox.showerror("Error", f"Account '{name}' already exists.", parent=dialog)
+                messagebox.showerror(
+                    "Error", f"Account '{name}' already exists.", parent=dialog
+                )
                 return
 
             new_account = {
@@ -465,8 +581,12 @@ class Tab(ctk.CTkFrame):
             self.add_log(f"Added new account: {name}")
             dialog.destroy()
 
-        PrimaryButton(btn_frame, text="Add Account", command=save_account).pack(side="left", fill="x", expand=True, padx=(0, 5))
-        SecondaryButton(btn_frame, text="Cancel", command=dialog.destroy).pack(side="left", fill="x", expand=True, padx=(5, 0))
+        PrimaryButton(btn_frame, text="Add Account", command=save_account).pack(
+            side="left", fill="x", expand=True, padx=(0, 5)
+        )
+        SecondaryButton(btn_frame, text="Cancel", command=dialog.destroy).pack(
+            side="left", fill="x", expand=True, padx=(5, 0)
+        )
 
     def select_account(self, account):
         if not account:
@@ -479,7 +599,12 @@ class Tab(ctk.CTkFrame):
 
     def toggle_auto(self):
         self.auto_refresh = not self.auto_refresh
-        ui_dispatch(self, lambda: self.auto_btn.configure(text="Auto: ON" if self.auto_refresh else "Auto: OFF"))
+        ui_dispatch(
+            self,
+            lambda: self.auto_btn.configure(
+                text="Auto: ON" if self.auto_refresh else "Auto: OFF"
+            ),
+        )
 
     def activate_account(self):
         # Deprecated, handled by select_account
@@ -489,9 +614,20 @@ class Tab(ctk.CTkFrame):
         account = self.selected_account
         result = self.api.logout(account=account)
         if not result.get("ok"):
-            ui_dispatch(self, lambda: self.connection_status_label.configure(text=f"Logout error: {result.get('error')}", text_color=COLORS["danger"]))
+            ui_dispatch(
+                self,
+                lambda: self.connection_status_label.configure(
+                    text=f"Logout error: {result.get('error')}",
+                    text_color=COLORS["danger"],
+                ),
+            )
             return
-        ui_dispatch(self, lambda: self.connection_status_label.configure(text="Logged out", text_color=COLORS["warning"]))
+        ui_dispatch(
+            self,
+            lambda: self.connection_status_label.configure(
+                text="Logged out", text_color=COLORS["warning"]
+            ),
+        )
         self.refresh_now(silent=True)
 
     def refresh_now(self, silent: bool = True):
@@ -508,18 +644,57 @@ class Tab(ctk.CTkFrame):
         account = self.selected_account
 
         status = self.api.get_health(account=account)
+
+        if not status.get("ok"):
+            if not silent:
+                ui_dispatch(
+                    self,
+                    lambda: self.connection_status_label.configure(
+                        text=f"Error: {status.get('error')}",
+                        text_color=COLORS["danger"],
+                    ),
+                )
+            return
+
+        is_connected = (
+            status.get("connected")
+            or str(status.get("status", "")).lower() == "connected"
+        )
+        if not is_connected:
+            connect_result = self.api.connect_account(account)
+            if not connect_result.get("ok"):
+                if not silent:
+                    ui_dispatch(
+                        self,
+                        lambda: self.connection_status_label.configure(
+                            text=f"Connection error: {connect_result.get('error')}",
+                            text_color=COLORS["danger"],
+                        ),
+                    )
+                return
+            status = self.api.get_health(account=account)
+
         qr_data = self.api.get_qr(account=account)
 
         if not status.get("ok"):
             if not silent:
-                ui_dispatch(self, lambda: self.connection_status_label.configure(text=f"Error: {status.get('error')}", text_color=COLORS["danger"]))
+                ui_dispatch(
+                    self,
+                    lambda: self.connection_status_label.configure(
+                        text=f"Error: {status.get('error')}",
+                        text_color=COLORS["danger"],
+                    ),
+                )
             return
 
         current_acc = status.get("account") or status.get("current_account") or account
         dev = status.get("device") or {}
 
         # Update status in local data for the list dot
-        is_connected = qr_data.get("connected") or str(qr_data.get("status", "")).lower() == "connected"
+        is_connected = (
+            qr_data.get("connected")
+            or str(qr_data.get("status", "")).lower() == "connected"
+        )
         new_status = "active" if is_connected else "offline"
         for item in self.accounts_data:
             if item.get("name") == account:
@@ -527,7 +702,7 @@ class Tab(ctk.CTkFrame):
                 break
 
         # Update local data if phone number is found
-        number = dev.get('number')
+        number = dev.get("number")
         if number:
             updated = False
             for item in self.accounts_data:
@@ -536,7 +711,7 @@ class Tab(ctk.CTkFrame):
                         item["phone"] = number
                         updated = True
                     break
-        
+
         # Save and re-render list to show updated status dot
         self._save_accounts_to_file()
         ui_dispatch(self, self._render_account_list)
@@ -555,15 +730,35 @@ class Tab(ctk.CTkFrame):
 
         ui_dispatch(self, _update_device)
 
-        if qr_data.get("connected") or str(qr_data.get("status", "")).lower() == "connected":
-            ui_dispatch(self, lambda: self.connection_status_label.configure(text="CONNECTED", text_color=COLORS["success"]))
-            ui_dispatch(self, lambda: self.qr_label.configure(text="WhatsApp is connected", image=None))
+        if (
+            qr_data.get("connected")
+            or str(qr_data.get("status", "")).lower() == "connected"
+        ):
+            ui_dispatch(
+                self,
+                lambda: self.connection_status_label.configure(
+                    text="CONNECTED", text_color=COLORS["success"]
+                ),
+            )
+            ui_dispatch(
+                self,
+                lambda: self.qr_label.configure(
+                    text="WhatsApp is connected", image=None
+                ),
+            )
             return
 
         qr_value = qr_data.get("qr")
         if not qr_value:
-            ui_dispatch(self, lambda: self.connection_status_label.configure(text="Waiting for QR...", text_color=COLORS["warning"]))
-            ui_dispatch(self, lambda: self.qr_label.configure(text="No QR yet", image=None))
+            ui_dispatch(
+                self,
+                lambda: self.connection_status_label.configure(
+                    text="Waiting for QR...", text_color=COLORS["warning"]
+                ),
+            )
+            ui_dispatch(
+                self, lambda: self.qr_label.configure(text="No QR yet", image=None)
+            )
             return
 
         self._render_qr(qr_value)
@@ -582,11 +777,18 @@ class Tab(ctk.CTkFrame):
             def _apply():
                 self.qr_label.configure(image=qr_img, text="")
                 self.qr_label.image = qr_img  # type: ignore[attr-defined]
-                self.connection_status_label.configure(text="SCAN QR TO LOGIN", text_color=COLORS["warning"])
+                self.connection_status_label.configure(
+                    text="SCAN QR TO LOGIN", text_color=COLORS["warning"]
+                )
 
             ui_dispatch(self, _apply)
         except Exception as exc:
-            ui_dispatch(self, lambda: self.connection_status_label.configure(text=f"QR render error: {exc}", text_color=COLORS["danger"]))
+            ui_dispatch(
+                self,
+                lambda: self.connection_status_label.configure(
+                    text=f"QR render error: {exc}", text_color=COLORS["danger"]
+                ),
+            )
 
     def _update_monitor(self):
         result = self.api.get_stats()
@@ -647,15 +849,32 @@ class Tab(ctk.CTkFrame):
         account = self.selected_account
 
         if not number or not message:
-            ui_dispatch(self, lambda: self.send_status.configure(text="Number + Message required", text_color=COLORS["danger"]))
+            ui_dispatch(
+                self,
+                lambda: self.send_status.configure(
+                    text="Number + Message required", text_color=COLORS["danger"]
+                ),
+            )
             return
 
         def _work():
             resp = self.api.send_message(number, message, account=account)
             if not resp.get("ok"):
-                ui_dispatch(self, lambda: self.send_status.configure(text=f"Send failed: {resp.get('error')}", text_color=COLORS["danger"]))
+                ui_dispatch(
+                    self,
+                    lambda: self.send_status.configure(
+                        text=f"Send failed: {resp.get('error')}",
+                        text_color=COLORS["danger"],
+                    ),
+                )
                 return
-            ui_dispatch(self, lambda: self.send_status.configure(text=f"Sent via {resp.get('account', account)}", text_color=COLORS["success"]))
+            ui_dispatch(
+                self,
+                lambda: self.send_status.configure(
+                    text=f"Sent via {resp.get('account', account)}",
+                    text_color=COLORS["success"],
+                ),
+            )
 
         start_daemon(_work)
 
@@ -664,19 +883,37 @@ class Tab(ctk.CTkFrame):
         account = self.selected_account
 
         if not number:
-            ui_dispatch(self, lambda: self.profile_status.configure(text="Number required", text_color=COLORS["danger"]))
+            ui_dispatch(
+                self,
+                lambda: self.profile_status.configure(
+                    text="Number required", text_color=COLORS["danger"]
+                ),
+            )
             return
 
         def _work():
             resp = self.api.profile_check(number, account=account)
             if not resp.get("ok"):
-                ui_dispatch(self, lambda: self.profile_status.configure(text=f"Check failed: {resp.get('error')}", text_color=COLORS["danger"]))
+                ui_dispatch(
+                    self,
+                    lambda: self.profile_status.configure(
+                        text=f"Check failed: {resp.get('error')}",
+                        text_color=COLORS["danger"],
+                    ),
+                )
                 return
 
             exists = bool(resp.get("exists"))
-            message = f"Exists (via {resp.get('account', account)})" if exists else f"Not on WhatsApp"
+            message = (
+                f"Exists (via {resp.get('account', account)})"
+                if exists
+                else f"Not on WhatsApp"
+            )
             color = COLORS["success"] if exists else COLORS["warning"]
-            ui_dispatch(self, lambda: self.profile_status.configure(text=message, text_color=color))
+            ui_dispatch(
+                self,
+                lambda: self.profile_status.configure(text=message, text_color=color),
+            )
 
         start_daemon(_work)
 
@@ -686,7 +923,7 @@ class Tab(ctk.CTkFrame):
         if not account:
             messagebox.showwarning("Warning", "Select an account first")
             return
-        
+
         def _work():
             result = self.api.session_backup(account)
             if result.get("ok"):
@@ -694,7 +931,7 @@ class Tab(ctk.CTkFrame):
                 self.add_log(f"✅ Session backed up: {url}")
             else:
                 self.add_log(f"❌ Backup failed: {result.get('error')}", "error")
-        
+
         start_daemon(_work)
         self.add_log(f"🔄 Backing up session for {account}...")
 
@@ -702,21 +939,30 @@ class Tab(ctk.CTkFrame):
         """Update proxy/read receipt status display"""
         try:
             from core.engine.proxy_rotator import get_proxy_rotator
+
             rotator = get_proxy_rotator()
             stats = rotator.get_stats(self.selected_account)
-            
-            proxy_text = f"Proxy: {stats['healthy_proxies']}/{stats['total_proxies']} healthy"
-            color = COLORS["success"] if stats['healthy_proxies'] > 0 else COLORS["warning"]
-            
+
+            proxy_text = (
+                f"Proxy: {stats['healthy_proxies']}/{stats['total_proxies']} healthy"
+            )
+            color = (
+                COLORS["success"] if stats["healthy_proxies"] > 0 else COLORS["warning"]
+            )
+
             self.proxy_status_label.configure(text=proxy_text, text_color=color)
-            
-            receipt_text = f"Read Receipts: {'ON' if self.read_receipts_var.get() else 'OFF'}"
+
+            receipt_text = (
+                f"Read Receipts: {'ON' if self.read_receipts_var.get() else 'OFF'}"
+            )
             self.add_log(receipt_text)
         except Exception as e:
-            self.proxy_status_label.configure(text=f"Proxy: Error ({e})", text_color=COLORS["danger"])
+            self.proxy_status_label.configure(
+                text=f"Proxy: Error ({e})", text_color=COLORS["danger"]
+            )
 
     def destroy(self):
-        if hasattr(self, 'stop_event'):
+        if hasattr(self, "stop_event"):
             self.stop_event.set()
         try:
             self.api.close()
@@ -727,7 +973,6 @@ class Tab(ctk.CTkFrame):
 
 # Alias for backward compatibility with main.py
 MultiAccountPanelTab = Tab
-
 
 
 # Alias for backward compatibility with main.py
