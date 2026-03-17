@@ -66,8 +66,9 @@ class Tab(ctk.CTkFrame):
         header.pack(fill="x", padx=SPACING["md"], pady=(SPACING["sm"], SPACING["xs"]))
 
         # Status Badge
-        self.status_badge = StatusBadge(header.actions, text="ACTIVE", tone="success")
-        self.status_badge.pack(side="right")
+        badge_colors = self._get_badge_colors_from_tone("success")
+        self.header_status_badge = StatusBadge(header.actions, text="ACTIVE", **badge_colors)
+        self.header_status_badge.pack(side="right")
 
         # Main container
         main = ctk.CTkFrame(self, fg_color="transparent")
@@ -127,8 +128,8 @@ class Tab(ctk.CTkFrame):
         status_card.pack(fill="both", expand=True)
         ctk.CTkLabel(status_card.inner_frame, text="Connection Status", font=heading(TYPOGRAPHY["h3"], "bold")).pack(anchor="w", pady=(0, SPACING["sm"]))
 
-        self.status_badge = ctk.CTkLabel(status_card.inner_frame, text="Status: idle", font=heading(TYPOGRAPHY["h2"], "bold"), text_color=COLORS["warning"])
-        self.status_badge.pack(pady=(0, SPACING["sm"]))
+        self.connection_status_label = ctk.CTkLabel(status_card.inner_frame, text="Status: idle", font=heading(TYPOGRAPHY["h2"], "bold"), text_color=COLORS["warning"])
+        self.connection_status_label.pack(pady=(0, SPACING["sm"]))
 
         self.device_label = ctk.CTkLabel(
             status_card.inner_frame,
@@ -295,6 +296,20 @@ class Tab(ctk.CTkFrame):
 
         _render_batch(0)
 
+    def _get_badge_colors_from_tone(self, tone: str) -> dict:
+        """Map tone to fg/text colors."""
+        # Based on LeadWave component conventions
+        if tone == "success":
+            return {"fg_color": COLORS["success"], "text_color": "white"}
+        if tone == "warning":
+            return {"fg_color": COLORS["warning"], "text_color": "black"}
+        if tone == "danger":
+            return {"fg_color": COLORS["danger"], "text_color": "white"}
+        if tone == "info":
+            return {"fg_color": COLORS["info"], "text_color": "white"}
+        # neutral
+        return {"fg_color": COLORS["surface_2"], "text_color": COLORS["text_secondary"]}
+
     def _load_accounts_from_file(self):
         if os.path.exists(self.accounts_file):
             try:
@@ -358,10 +373,10 @@ class Tab(ctk.CTkFrame):
                 self.select_account(self.selected_account)
             else:
                 # Clear UI if no accounts left
-                self.acc_title.configure(text="No Account Selected")
+                self.acc_title.configure(text="No Accounts")
                 self.device_label.configure(text="No account selected")
                 self.qr_label.configure(image=None, text="")
-                self.status_badge.configure(text="---", text_color=COLORS["text_muted"])
+                self.connection_status_label.configure(text="---", text_color=COLORS["text_muted"])
         
         self._render_account_list()
 
@@ -447,9 +462,9 @@ class Tab(ctk.CTkFrame):
         account = self.selected_account
         result = self.api.logout(account=account)
         if not result.get("ok"):
-            ui_dispatch(self, lambda: self.status_badge.configure(text=f"Logout error: {result.get('error')}", text_color=COLORS["danger"]))
+            ui_dispatch(self, lambda: self.connection_status_label.configure(text=f"Logout error: {result.get('error')}", text_color=COLORS["danger"]))
             return
-        ui_dispatch(self, lambda: self.status_badge.configure(text="Logged out", text_color=COLORS["warning"]))
+        ui_dispatch(self, lambda: self.connection_status_label.configure(text="Logged out", text_color=COLORS["warning"]))
         self.refresh_now(silent=True)
 
     def refresh_now(self, silent: bool = True):
@@ -470,7 +485,7 @@ class Tab(ctk.CTkFrame):
 
         if not status.get("ok"):
             if not silent:
-                ui_dispatch(self, lambda: self.status_badge.configure(text=f"Error: {status.get('error')}", text_color=COLORS["danger"]))
+                ui_dispatch(self, lambda: self.connection_status_label.configure(text=f"Error: {status.get('error')}", text_color=COLORS["danger"]))
             return
 
         current_acc = status.get("account") or status.get("current_account") or account
@@ -514,13 +529,13 @@ class Tab(ctk.CTkFrame):
         ui_dispatch(self, _update_device)
 
         if qr_data.get("connected") or str(qr_data.get("status", "")).lower() == "connected":
-            ui_dispatch(self, lambda: self.status_badge.configure(text="CONNECTED", text_color=COLORS["success"]))
+            ui_dispatch(self, lambda: self.connection_status_label.configure(text="CONNECTED", text_color=COLORS["success"]))
             ui_dispatch(self, lambda: self.qr_label.configure(text="WhatsApp is connected", image=None))
             return
 
         qr_value = qr_data.get("qr")
         if not qr_value:
-            ui_dispatch(self, lambda: self.status_badge.configure(text="Waiting for QR...", text_color=COLORS["warning"]))
+            ui_dispatch(self, lambda: self.connection_status_label.configure(text="Waiting for QR...", text_color=COLORS["warning"]))
             ui_dispatch(self, lambda: self.qr_label.configure(text="No QR yet", image=None))
             return
 
@@ -540,11 +555,11 @@ class Tab(ctk.CTkFrame):
             def _apply():
                 self.qr_label.configure(image=qr_img, text="")
                 self.qr_label.image = qr_img  # type: ignore[attr-defined]
-                self.status_badge.configure(text="SCAN QR TO LOGIN", text_color=COLORS["warning"])
+                self.connection_status_label.configure(text="SCAN QR TO LOGIN", text_color=COLORS["warning"])
 
             ui_dispatch(self, _apply)
         except Exception as exc:
-            ui_dispatch(self, lambda: self.status_badge.configure(text=f"QR render error: {exc}", text_color=COLORS["danger"]))
+            ui_dispatch(self, lambda: self.connection_status_label.configure(text=f"QR render error: {exc}", text_color=COLORS["danger"]))
 
     def _update_monitor(self):
         result = self.api.get_stats()
@@ -650,4 +665,3 @@ class Tab(ctk.CTkFrame):
 
 # Alias for backward compatibility with main.py
 MultiAccountPanelTab = Tab
-

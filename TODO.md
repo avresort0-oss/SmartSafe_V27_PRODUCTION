@@ -1,42 +1,14 @@
-# Data-Driven Bulk Sender Integration - Progress Tracker
+# SmartSafe V27 - GitHub Full Project Update
 
-## Approved Plan Steps (V32 → Production Ready)
+## Task: Direct upload full project updates to GitHub (origin main)
 
-### ✅ Step 1: Verify Implementation Status
+### Steps from Approved Plan
 
-- [x] Confirmed `bulk_sender_pro_tab.py` has complete self-contained data-driven features
-- [x] Verified `./data/campaigns.db` exists and schema ready
-- [x] No `data_driven_patterns.py` needed (inline implementation)
+- [ ] 1. Check git status and list changed files
+- [ ] 2. Stage all changes: git add .
+- [ ] 3. Commit: \"Update: Complete QR login tab fixes, UI improvements, production ready (V27)\"
+- [ ] 4. Push to origin/main
+- [ ] 5. Verify commit on GitHub
+- [ ] 6. Update TODO.md as complete
 
-### 🔄 Step 2: Fix Font/Theme Errors (Critical)
-
-- [ ] Replace 25+ incorrect `heading()/body()` calls with `font_manager.heading/body()`
-- [ ] Add bundled font registration: `register_bundled_fonts()`
-- [ ] Test tab loads without "unknown font style" error
-
-### ✅ Step 3: Test Core Features
-
-- [ ] Load CSV → Contact quality scoring works
-- [ ] Test send single message
-- [ ] Run small bulk (10 contacts) → Metrics saved to DB
-- [ ] Click "📊 Analytics" → Shows trends/recommendations
-
-### ⏳ Step 4: Advanced Validation
-
-- [ ] Auto-profile selection after multiple campaigns
-- [ ] Ban risk updates live during sending
-- [ ] Throughput chart animates
-- [ ] A/B test template switching
-- [ ] Retry failed contacts
-
-### ✅ Step 5: Production Polish
-
-- [x] Self-contained (no external deps beyond core)
-- [ ] Export analytics as CSV/JSON
-- [ ] Add schedule feature stub
-
-## Current Status: 30% (Font fix blocking)
-
-**Next:** Fix font errors → Test CSV load/bulk send
-
-**Est. Time:** 5 min fixes + 10 min testing = Ready!
+**Status:** Starting GitHub sync...

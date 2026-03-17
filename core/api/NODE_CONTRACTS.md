@@ -425,6 +425,18 @@ This section documents endpoints for managing accounts and retrieving data.
 - **Auth**: `X-API-Key` required when `SMARTSAFE_REQUIRE_API_KEY=true`
 - **Python caller**: `BaileysAPI.get_qr(account=...)`
 
+#### `/pairing-code` – Get pairing code
+
+- **Method**: `POST`
+- **Auth**: `X-API-Key` required when `SMARTSAFE_REQUIRE_API_KEY=true`
+- **Request body**: `{ "account": "acc1", "number": "123456789" }`
+- **Python caller**: `BaileysAPI.get_pairing_code(account, number)`
+- **Success Response**:
+
+  ```json
+  { "ok": true, "code": "ABCD-1234", "account": "acc1" }
+  ```
+
 #### `/connect/:account` – Connect an account
 
 - **Method**: `POST`

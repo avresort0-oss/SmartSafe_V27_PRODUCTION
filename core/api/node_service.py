@@ -183,6 +183,14 @@ class NodeService:
             return self._request("GET", f"/qr/{account}")
         return self._request("GET", "/qr")
 
+    def get_pairing_code(self, account: str, number: str) -> NodeResponse:
+        """
+        Request a pairing code for the given account and phone number.
+        Required for 'Link with phone number' functionality.
+        """
+        payload = {"account": account, "number": number}
+        return self._request("POST", "/pairing-code", json_data=payload)
+
     def get_accounts(self) -> NodeResponse:
         return self._request("GET", "/accounts")
 
