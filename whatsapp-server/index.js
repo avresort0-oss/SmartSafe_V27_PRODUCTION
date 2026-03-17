@@ -11,10 +11,7 @@ const pino = require('pino');
 const QRCode = require('qrcode');
 const fs = require('fs-extra');
 const path = require('path');
-const pkg = require('./package.json');
-const Agent = require('agentkeepalive');
-
-// Load environment variables from .env if present (project root preferred).
+const pkg = require('./package.json'); \nconst Agent = require('agentkeepalive'); \n\nconst { Queue } = require('bullmq'); \nconst { createClient } = require('redis'); \nconst rateLimit = require('express-rate-limit'); \n\nconst REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379'; \nconst redisConnection = createClient({ url: REDIS_URL }); \nredisConnection.connect().catch(console.error); \n\nconst messageQueue = new Queue('whatsapp-messages', { \n    connection: redisConnection, \n    defaultJobOptions: { \n        attempts: 3, \n        backoff: { type: 'exponential', delay: 2000 }, \n        removeOnComplete: true\n }\n }); \n\n// Load environment variables from .env if present (project root preferred).
 // This keeps Node and Python configs aligned when using a shared .env file.
 try {
     const dotenv = require('dotenv');
@@ -245,7 +242,7 @@ app.get('/stats', (req, res) => {
         sessions: sessionStats,
         stats,
         current_account: currentAccount,
-        queue_length: 0,
+        queue_length: await messageQueue.getWaitingCount() + await messageQueue.getActiveCount(),
         server_time: new Date().toISOString()
     });
 });
@@ -397,7 +394,7 @@ app.post('/connect/:account', async (req, res) => {
         if (sock && sock.user) {
             return res.json({ ok: true, account, connected: true, message: 'Already connected' });
         }
-        
+
         // A connection is already in progress. The client should check for QR/status separately.
         // This avoids creating a duplicate session which can cause race conditions.
         return res.json({ ok: true, account, status: 'pending', message: 'Connection already in progress.' });
@@ -1014,4 +1011,4 @@ process.on('SIGINT', async () => {
     process.exit(0);
 });
 
-module.exports = app;
+module.exports = { app, sessions, messageStore, persistMessages, getMetrics, normalizeAccount };

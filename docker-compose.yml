@@ -1,6 +1,21 @@
 version: '3.9'
 
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - smartsafe-net
+
   python-gui:
     build:
       context: .
@@ -41,6 +56,10 @@ services:
       - SMARTSAFE_API_KEY=${SMARTSAFE_API_KEY}
       - SMARTSAFE_REQUIRE_API_KEY=false
       - SMARTSAFE_CORS_ORIGINS=*
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
       interval: 30s
@@ -59,4 +78,4 @@ volumes:
   data:
   logs:
   sessions:
-
+  redis-data:

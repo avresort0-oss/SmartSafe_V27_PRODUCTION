@@ -1,20 +1,16 @@
-# SmartSafe V27 QR Fix & Perf Optimization TODO
+# Queue System Integration (BullMQ + Redis)
 
-## Current Task: Fix QR Login Tab (Real QR) + Ensure Superfast
+Status: In Progress
 
-### Steps
+## Steps
 
-- [ ] **1. Create TODO.md** ✅ *Done*
-- [ ] **2. Edit ui/tabs/qr_login_tab.py**
-  - Add "New Session" account option (fresh Baileys session)
-  - Custom session name input
-  - On select: api.connect_account(session_name) → real QR
-  - Hide/remove demo "default" QR
-  - Mimic MultiAccount real QR flow
-- [ ] **3. Test QR Tab**: New Session → Real QR appears → Scan works
-- [ ] **4. Verify Perf**: No added lag (threading unchanged)
-- [ ] **5. attempt_completion**
-
-**Perf Status**: Already optimized (daemons/async/UI batches).
-
-Proceeding to edit...
+- [x] 1. Create TODO.md
+- [x] 2. Install dependencies in whatsapp-server/
+- [x] 3. Create whatsapp-server/worker.js
+- [x] 4. Edit whatsapp-server/package.json (scripts)
+- [ ] 5. Edit whatsapp-server/index.js (imports, exports, routes)
+- [x] 6. Edit docker-compose.yml (add redis service)
+- [ ] 7. Test: npm run dev + node worker.js + curl /send
+- [ ] 8. Optional: PM2 ecosystem.config.js
+- [ ] 9. Docker: docker-compose up -d
+- [ ] 10. Complete & test production
