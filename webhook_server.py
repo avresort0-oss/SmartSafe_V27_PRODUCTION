@@ -29,8 +29,8 @@ api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=True)
 async def get_api_key(key: str = Security(api_key_header)):
     """Dependency to validate the API key."""
     if not API_KEY:
-        logger.warning("WEBHOOK_API_KEY is not set. API is unsecured!")
-        return key # Allow if no key is set, but log a warning
+        logger.error("WEBHOOK_API_KEY is not set. API is secured by default - access denied!")
+        raise HTTPException(status_code=503, detail="Webhook API not configured - please set WEBHOOK_API_KEY")
     if key == API_KEY:
         return key
     else:
