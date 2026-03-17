@@ -92,6 +92,15 @@ class Settings:
     webhook_api_port: int
     webhook_api_key: str
 
+    # Smart Anti-Ban Engine settings
+    enable_proxy_rotation: bool
+    proxy_rotation_interval: int
+    proxies_file: str
+    read_receipt_mode: str  # 'auto', 'off', 'manual'
+    enable_session_backup: bool
+    google_drive_creds_path: str
+    session_backup_interval: int
+
 
 def load_settings() -> Settings:
     node_host = _env_str("SMARTSAFE_NODE_HOST", "127.0.0.1")
@@ -134,6 +143,15 @@ def load_settings() -> Settings:
         webhook_api_host=_env_str("SMARTSAFE_WEBHOOK_API_HOST", "127.0.0.1"),
         webhook_api_port=_env_int("SMARTSAFE_WEBHOOK_API_PORT", 8000),
         webhook_api_key=_env_str("SMARTSAFE_WEBHOOK_API_KEY", ""),
+
+        # Smart Anti-Ban Engine
+        enable_proxy_rotation=_env_bool("SMARTSAFE_ENABLE_PROXY_ROTATION", True),
+        proxy_rotation_interval=_env_int("SMARTSAFE_PROXY_ROTATION_INTERVAL", 10),
+        proxies_file=_env_str("SMARTSAFE_PROXIES_FILE", "proxies.json"),
+        read_receipt_mode=_env_str("SMARTSAFE_READ_RECEIPT_MODE", "auto"),
+        enable_session_backup=_env_bool("SMARTSAFE_ENABLE_SESSION_BACKUP", True),
+        google_drive_creds_path=_env_str("SMARTSAFE_GOOGLE_DRIVE_CREDS", "google_drive_creds.json"),
+        session_backup_interval=_env_int("SMARTSAFE_SESSION_BACKUP_INTERVAL", 3600),
     )
 
 

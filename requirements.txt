@@ -7,3 +7,8 @@ pandas==3.0.1
 python-dotenv==1.2.2
 scikit-learn==1.8.0
 numpy==2.4.3
+PySocks==1.7.1
+google-auth==2.35.0
+google-auth-oauthlib==1.2.1
+google-auth-httplib2==0.2.0
+google-api-python-client==2.149.0

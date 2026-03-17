@@ -1,12 +1,7 @@
 [
   {
     "name": "default",
-    "status": "offline",
-    "phone": "N/A"
-  },
-  {
-    "name": "acc3",
-    "phone": "N/A",
-    "status": "offline"
+    "status": "active",
+    "phone": "966572092180:61"
   }
 ]

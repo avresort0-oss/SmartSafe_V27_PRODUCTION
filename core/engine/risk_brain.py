@@ -64,6 +64,11 @@ class RiskConfig:
     randomization: float
     cooldown_factor: float
 
+    # Smart Anti-Ban Engine
+    anti_ban_min_delay: float = 8.0
+    anti_ban_max_delay: float = 22.0
+    read_receipt_mode: str = 'auto'  # 'auto', 'off', 'manual'
+
     # ------------------------------------------------------------------
     # Phase B: Content safety (similarity/entropy gate)
     # ------------------------------------------------------------------
@@ -665,50 +670,51 @@ class RiskBrain:
             return
         self._content_history_by_account[acc_key].append(text.strip())
     
-    def get_safe_delay(self, randomize: bool = True) -> float:
+    def get_safe_delay(self, message_length: int = 0, randomize: bool = True) -> float:
         """
-        Calculate safe delay based on current risk and human-like behavior.
-
+        Smart Anti-Ban: 8-22s random delay + typing simulation.
+        
         Args:
-            randomize: Add random variation.
-
+            message_length: Message length for typing simulation
+            randomize: Add human-like variation
+            
         Returns:
-            Delay in seconds.
+            Total delay (base + typing + jitter)
         """
-        # Base delay from config and current risk score.
-        base_delay = self.config.min_delay
-
-        if self.current_risk_score < 20:
-            multiplier = 1.0
-        elif self.current_risk_score < 40:
-            multiplier = 1.5
-        elif self.current_risk_score < 60:
-            multiplier = 2.5
-        elif self.current_risk_score < 80:
-            multiplier = 4.0
+        # Anti-Ban base: 8-22s random range (task requirement)
+        base_delay = random.uniform(self.config.anti_ban_min_delay, self.config.anti_ban_max_delay)
+        
+        # Typing simulation (3.3 chars/sec average)
+        typing_delay = HybridAIEngine.get_typing_delay(message_length)
+        
+        # Risk multiplier
+        if self.current_risk_score < 30:
+            risk_mult = 1.0
+        elif self.current_risk_score < 50:
+            risk_mult = 1.3  
+        elif self.current_risk_score < 70:
+            risk_mult = 1.6
         else:
-            multiplier = 6.0 * self.config.cooldown_factor
+            risk_mult = 2.0 * self.config.cooldown_factor
 
-        delay = base_delay * multiplier
+        delay = (base_delay + typing_delay) * risk_mult
 
-        # Human-like jitter and occasional long pauses delegated to HybridAI.
+        # Human-like randomization
         if randomize and self.enable_ai:
             delay = HybridAIEngine.calculate_human_delay(delay)
-            delay += HybridAIEngine.add_random_pause()
         elif randomize:
-            random_factor = self.config.randomization
-            variation = delay * random_factor
-            delay += random.uniform(-variation, variation)
+            # ±20% jitter within anti-ban bounds
+            jitter = delay * 0.2
+            delay += random.uniform(-jitter, jitter)
+            # Clamp to 8-22s core range
+            delay = max(8.0, min(22.0, delay))
 
-        # Ensure within bounds.
-        delay = max(self.config.min_delay, delay)
-        delay = min(self.config.max_delay, delay)
-
-        # Track moving average for diagnostics.
+        # Track for ML features
         self._delay_history.append(delay)
         if self._delay_history:
             self.stats["avg_delay"] = sum(self._delay_history) / len(self._delay_history)
 
+        logger.debug(f"Anti-ban delay: {delay:.1f}s (base:{base_delay:.1f}, typing:{typing_delay:.1f}, risk:{risk_mult:.1f})")
         return round(delay, 2)
     
     def should_pause(self) -> Tuple[bool, str]:
@@ -755,22 +761,46 @@ class RiskBrain:
         
         return False, "OK"
     
-    def can_send_message(self, recipient: Optional[str] = None, account: Optional[str] = None) -> Tuple[bool, str]:
+    def can_send_message(self, recipient: Optional[str] = None, account: Optional[str] = None, read_receipts: Optional[bool] = None) -> Tuple[bool, str, Dict]:
         """
-        Check if safe to send message
+        Smart Anti-Ban check with read receipt control.
         
         Args:
-            recipient: Optional recipient number
-            account: Optional sending account identifier (used for per-account recipient caps)
+            recipient: Recipient number
+            account: Sending account  
+            read_receipts: Read receipt preference (overrides global)
             
         Returns:
-            Tuple of (can_send, reason)
+            (can_send, reason, settings) - settings includes proxy/read_receipts
         """
         # Check per-minute limit
         if self._count_last_minute() >= self.config.minute_limit:
             reason = "Per-minute limit reached"
             self._record_incident("minute_limit", reason, recipient)
-            return False, reason
+            return False, reason, {}
+
+        # Read receipt safety check (high read rates increase ban risk)
+        receipt_mode = read_receipts if read_receipts is not None else self.config.read_receipt_mode
+        if receipt_mode == 'manual' and self.current_risk_score > 60:
+            reason = "High risk: disable read receipts"
+            return False, reason, {'read_receipts': False}
+
+        # Get proxy for this send
+        proxy_info = None
+        if SETTINGS.enable_proxy_rotation:
+            from core.engine.proxy_rotator import get_proxy_rotator
+            proxy_result = get_proxy_rotator().get_next_proxy(account)
+            if proxy_result:
+                proxy_obj, health = proxy_result
+                proxy_info = {'proxy': proxy_obj.url, 'health': health}
+            else:
+                logger.warning(f"No healthy proxy for {account}")
+
+        return True, "OK", {
+            'read_receipts': receipt_mode != 'off',
+            'proxy': proxy_info['proxy'] if proxy_info else None,
+            'proxy_health': proxy_info['health'] if proxy_info else None
+        }
 
         # Check hourly limit
         if self._count_last_hour() >= self.config.hourly_limit:

@@ -172,14 +172,41 @@ class Tab(ctk.CTkFrame):
         self.profile_status = ctk.CTkLabel(check_row, text="", font=body(TYPOGRAPHY["caption"]), text_color=COLORS["text_muted"])
         self.profile_status.pack(side="left", padx=SPACING["xs"])
 
+        # ========== Smart Anti-Ban Controls ==========
+        ctk.CTkLabel(quick_card.inner_frame, text="🛡️ Smart Anti-Ban", font=body(TYPOGRAPHY["caption"], "bold")).pack(anchor="w", pady=(SPACING["md"], SPACING["xxs"]))
+
+        # Read Receipts Toggle
+        receipt_frame = ctk.CTkFrame(quick_card.inner_frame, fg_color="transparent")
+        receipt_frame.pack(fill="x", pady=(0, SPACING["xs"]))
+        ctk.CTkLabel(receipt_frame, text="Read Receipts:", font=body(TYPOGRAPHY["caption"])).pack(side="left")
+        self.read_receipts_var = ctk.BooleanVar(value=SETTINGS.read_receipt_mode != 'off')
+        ctk.CTkSwitch(receipt_frame, text="", variable=self.read_receipts_var, width=50).pack(side="right")
+
+        # Backup Button
+        backup_btn = SecondaryButton(
+            quick_card.inner_frame,
+            text="💾 Backup Session",
+            command=self.backup_session
+        )
+        backup_btn.pack(fill="x", pady=(0, SPACING["sm"]))
+
+        # Proxy Status (dynamic)
+        self.proxy_status_label = ctk.CTkLabel(
+            quick_card.inner_frame,
+            text="Proxy: Loading...",
+            font=body(TYPOGRAPHY["caption"]),
+            text_color=COLORS["text_muted"]
+        )
+        self.proxy_status_label.pack(anchor="w")
+
         # Monitor Card
         monitor_card = SectionCard(right_col)
         monitor_card.pack(fill="both", expand=True)
         ctk.CTkLabel(
             monitor_card.inner_frame,
-            text="System Status Board",
+            text="SmartSafe Anti-Ban Status",
             font=heading(TYPOGRAPHY["h3"], "bold"),
-            text_color=COLORS["text_secondary"],
+            text_color=COLORS["brand"],
         ).pack(anchor="w", pady=(0, SPACING["xs"]))
         
         self.monitor_label = StyledTextbox(monitor_card.inner_frame)
@@ -653,6 +680,41 @@ class Tab(ctk.CTkFrame):
 
         start_daemon(_work)
 
+    def backup_session(self):
+        """Backup current account session to Google Drive"""
+        account = self.selected_account
+        if not account:
+            messagebox.showwarning("Warning", "Select an account first")
+            return
+        
+        def _work():
+            result = self.api.session_backup(account)
+            if result.get("ok"):
+                url = result.get("driveUrl", "Backup complete")
+                self.add_log(f"✅ Session backed up: {url}")
+            else:
+                self.add_log(f"❌ Backup failed: {result.get('error')}", "error")
+        
+        start_daemon(_work)
+        self.add_log(f"🔄 Backing up session for {account}...")
+
+    def update_anti_ban_status(self):
+        """Update proxy/read receipt status display"""
+        try:
+            from core.engine.proxy_rotator import get_proxy_rotator
+            rotator = get_proxy_rotator()
+            stats = rotator.get_stats(self.selected_account)
+            
+            proxy_text = f"Proxy: {stats['healthy_proxies']}/{stats['total_proxies']} healthy"
+            color = COLORS["success"] if stats['healthy_proxies'] > 0 else COLORS["warning"]
+            
+            self.proxy_status_label.configure(text=proxy_text, text_color=color)
+            
+            receipt_text = f"Read Receipts: {'ON' if self.read_receipts_var.get() else 'OFF'}"
+            self.add_log(receipt_text)
+        except Exception as e:
+            self.proxy_status_label.configure(text=f"Proxy: Error ({e})", text_color=COLORS["danger"])
+
     def destroy(self):
         if hasattr(self, 'stop_event'):
             self.stop_event.set()
@@ -661,6 +723,11 @@ class Tab(ctk.CTkFrame):
         except Exception:
             pass
         super().destroy()
+
+
+# Alias for backward compatibility with main.py
+MultiAccountPanelTab = Tab
+
 
 
 # Alias for backward compatibility with main.py
