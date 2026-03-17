@@ -11,12 +11,14 @@ from tkinter import messagebox
 
 from ui.theme import TabHeader, SectionCard, PrimaryButton, SecondaryButton, StyledTextbox, heading, SPACING, COLORS
 from core.engine.flow_engine import FlowEngine
+from core.ai.ai_service import AIService, get_ai_service
 from ui.utils.threading_helpers import ui_dispatch
 
 class FlowBuilderTab(ctk.CTkFrame):
     def __init__(self, master):
         super().__init__(master, fg_color="transparent")
         self.flow_engine = FlowEngine()
+        self.ai_service = get_ai_service()
         self.flows_dir = Path("flows")
         self.flows_dir.mkdir(exist_ok=True)
         self.current_flow_path: Path | None = None
@@ -83,10 +85,16 @@ class FlowBuilderTab(ctk.CTkFrame):
 
         self.json_editor.bind("<KeyRelease>", self._on_text_change)
 
-        mgmt_btn_row = ctk.CTkFrame(left_panel, fg_color="transparent")
-        mgmt_btn_row.pack(fill="x", pady=(SPACING["sm"], 0))
-        PrimaryButton(mgmt_btn_row, text="New Flow", command=self.new_flow).pack(side="left", expand=True, padx=(0, 5))
-        PrimaryButton(mgmt_btn_row, text="Save Flow", command=self.save_flow).pack(side="left", expand=True, padx=(5, 0))
+        # Editor button row
+        editor_btn_row = ctk.CTkFrame(left_panel, fg_color="transparent")
+        editor_btn_row.pack(fill="x", pady=(SPACING["sm"], 0))
+        PrimaryButton(editor_btn_row, text="New Flow", command=self.new_flow).pack(side="left", expand=True, padx=(0, 5))
+        PrimaryButton(editor_btn_row, text="Save Flow", command=self.save_flow).pack(side="left", expand=True, padx=(5, 0))
+
+        # Prompt enhancement row
+        enhance_row = ctk.CTkFrame(left_panel, fg_color="transparent")
+        enhance_row.pack(fill="x", pady=(SPACING["sm"], 0))
+        SecondaryButton(enhance_row, text="✨ Enhance Prompt", command=self._enhance_selected_prompt, height=32).pack(side="left", expand=True, fill="x")
         # --- Right Panel ---
         right_panel = ctk.CTkFrame(main_frame, fg_color="transparent")
         right_panel.grid(row=0, column=1, sticky="nsew")
@@ -357,3 +365,48 @@ class FlowBuilderTab(ctk.CTkFrame):
             value = match.group(0)
             tag = "boolean" if value in ["true", "false"] else "null" if value == "null" else "number"
             self.json_editor.tag_add(tag, start, end)
+
+    def _enhance_selected_prompt(self):
+        """Enhance the selected prompt text using AI"""
+        try:
+            # Get selected text or current line
+            try:
+                selected_text = self.json_editor.get("sel.first", "sel.last").strip()
+            except Exception:
+                # No selection, get current line
+                cursor_pos = self.json_editor.index("insert")
+                line_start = f"{cursor_pos.split('.')[0]}.0"
+                line_end = f"{cursor_pos.split('.')[0]}.end"
+                selected_text = self.json_editor.get(line_start, line_end).strip()
+            
+            if not selected_text:
+                messagebox.showinfo("Info", "Please select or place cursor on a prompt to enhance.")
+                return
+            
+            # Check if AI service is available
+            if not self.ai_service.enabled:
+                messagebox.showwarning("AI Unavailable", "AI service is not configured. Please set your API key in settings.")
+                return
+            
+            # Show progress
+            messagebox.showinfo("Enhancing", "AI is enhancing your prompt... Please wait.")
+            
+            # Get context - check if this is an AI Condition node
+            context = None
+            if "aiCondition" in selected_text or '"type"' in selected_text:
+                context = "This is an AI Condition node prompt for flow logic"
+            
+            # Call AI to enhance the prompt
+            enhanced = self.ai_service.enhance_prompt(selected_text, context)
+            
+            # Replace the selected text
+            try:
+                self.json_editor.delete("sel.first", "sel.last")
+            except Exception:
+                pass
+            
+            self.json_editor.insert("insert", enhanced)
+            messagebox.showinfo("Success", "Prompt enhanced successfully!")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to enhance prompt: {str(e)}")

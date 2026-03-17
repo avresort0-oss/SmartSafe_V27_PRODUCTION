@@ -2,6 +2,7 @@
 SmartSafe V27 - Flow Execution Engine
 Executes visual chatbot flows created in the Flow Builder.
 """
+
 import requests
 import json
 import logging
@@ -24,7 +25,9 @@ class FlowEngine:
         self.api = BaileysAPI()
         self.ai_service = get_ai_service()
         self.sessions_file = Path("sessions.json")
-        self.active_sessions: Dict[str, Dict[str, Any]] = self._load_sessions_from_disk()
+        self.active_sessions: Dict[str, Dict[str, Any]] = (
+            self._load_sessions_from_disk()
+        )
         self._lock = threading.Lock()
 
     def _load_sessions_from_disk(self) -> Dict[str, Dict[str, Any]]:
@@ -48,7 +51,9 @@ class FlowEngine:
         try:
             flow = json.loads(flow_definition)
             # TODO: Add validation for flow structure (nodes, edges, start_node)
-            logger.info(f"Successfully loaded flow with {len(flow.get('nodes', []))} nodes.")
+            logger.info(
+                f"Successfully loaded flow with {len(flow.get('nodes', []))} nodes."
+            )
             return flow
         except json.JSONDecodeError:
             logger.error("Failed to parse flow definition: invalid JSON.")
@@ -67,22 +72,27 @@ class FlowEngine:
             variable_to_store = session["waiting_for_input"]
             session["variables"][variable_to_store] = message
             session["waiting_for_input"] = None
-            
+
             next_node_id = session.get("current_node")
             if not next_node_id:
                 logger.warning(f"Flow ended for {phone} after receiving input.")
-                if phone in self.active_sessions: del self.active_sessions[phone]
+                if phone in self.active_sessions:
+                    del self.active_sessions[phone]
                 self._save_sessions_to_disk()
                 return
-            
+
             # Resume flow execution from the next node
-            self.schedule_execution(self._execute_node, args=[phone, message, next_node_id, session, flow])
-        
+            self.schedule_execution(
+                self._execute_node, args=[phone, message, next_node_id, session, flow]
+            )
+
         # Otherwise, treat it as a trigger to start a new flow.
         else:
             start_node_id = flow.get("start_node_id")
             if not start_node_id:
-                logger.warning(f"No start node defined for flow. Cannot process message from {phone}.")
+                logger.warning(
+                    f"No start node defined for flow. Cannot process message from {phone}."
+                )
                 return
 
             new_session = {
@@ -94,10 +104,15 @@ class FlowEngine:
             with self._lock:
                 self.active_sessions[phone] = new_session
             self._save_sessions_to_disk()
-            
-            self.schedule_execution(self._execute_node, args=[phone, message, start_node_id, new_session, flow])
 
-    def _execute_node(self, phone: str, message: str, node_id: str, session: Dict, flow: Dict):
+            self.schedule_execution(
+                self._execute_node,
+                args=[phone, message, start_node_id, new_session, flow],
+            )
+
+    def _execute_node(
+        self, phone: str, message: str, node_id: str, session: Dict, flow: Dict
+    ):
         """Executes a node and schedules the next one if applicable."""
         node = next((n for n in flow.get("nodes", []) if n["id"] == node_id), None)
         if not node:
@@ -106,7 +121,7 @@ class FlowEngine:
 
         node_type = node.get("type")
         logger.info(f"Executing node {node_id} (type: {node_type}) for user {phone}.")
-        
+
         next_node_id = None
 
         if node_type == "sendMessage":
@@ -116,44 +131,81 @@ class FlowEngine:
             try:
                 text_to_send = text_to_send.format(**variables)
             except KeyError as e:
-                logger.warning(f"Variable {e} not found for user {phone}. Sending raw text.")
+                logger.warning(
+                    f"Variable {e} not found for user {phone}. Sending raw text."
+                )
             except Exception:
-                pass # Ignore other formatting errors
-                
+                pass  # Ignore other formatting errors
+
             self.api.send_message(phone, text_to_send)
             next_node_id = node.get("next_node_id")
 
         elif node_type == "condition":
-            keyword = node.get("data", {}).get("keyword", "").lower()
-            if keyword and keyword in message.lower():
-                next_node_id = node.get("true_node_id")
+            data = node.get("data", {})
+            logic = data.get("logic", "AND").upper()
+            rules = data.get("rules", [])
+
+            # Evaluate all rules
+            rule_results = []
+            for rule in rules:
+                variable_name = rule.get("variable")
+                operator = rule.get("operator", "equals")
+                rule_value = rule.get("value")
+
+                # Get actual value from session variables or message
+                actual_value = session.get("variables", {}).get(variable_name)
+                if variable_name == "last_message":
+                    actual_value = message
+
+                # Evaluate rule using the helper method
+                rule_result = self._evaluate_rule(actual_value, operator, rule_value)
+                rule_results.append(rule_result)
+
+            # Apply logic (AND/OR)
+            if logic == "AND":
+                condition_result = all(rule_results)
+            elif logic == "OR":
+                condition_result = any(rule_results)
             else:
-                next_node_id = node.get("false_node_id")
-        
+                # Default to AND for unknown logic
+                condition_result = all(rule_results)
+
+            next_node_id = (
+                node.get("true_node_id")
+                if condition_result
+                else node.get("false_node_id")
+            )
+
         elif node_type == "getUserInput":
             variable_name = node.get("data", {}).get("variable", "last_reply")
             session["waiting_for_input"] = variable_name
-            session["current_node"] = node.get("next_node_id") # Set the next node to execute after input is received
-            
+            session["current_node"] = node.get(
+                "next_node_id"
+            )  # Set the next node to execute after input is received
+
             # Update session and pause execution
             with self._lock:
                 self.active_sessions[phone] = session
             self._save_sessions_to_disk()
-            logger.info(f"Flow for {phone} is now waiting for user input, to be stored in '{variable_name}'.")
-            return # Stop execution, wait for next message
+            logger.info(
+                f"Flow for {phone} is now waiting for user input, to be stored in '{variable_name}'."
+            )
+            return  # Stop execution, wait for next message
 
         elif node_type == "wait":
             delay = node.get("data", {}).get("seconds", 5)
             next_node_id_for_timer = node.get("next_node_id")
             if next_node_id_for_timer:
-                logger.info(f"Waiting for {delay}s before executing {next_node_id_for_timer} for {phone}")
+                logger.info(
+                    f"Waiting for {delay}s before executing {next_node_id_for_timer} for {phone}"
+                )
                 # Use a timer to avoid blocking the thread
                 threading.Timer(
-                    delay, 
-                    self._execute_node, 
-                    args=[phone, message, next_node_id_for_timer, session, flow]
+                    delay,
+                    self._execute_node,
+                    args=[phone, message, next_node_id_for_timer, session, flow],
                 ).start()
-            return # Stop execution in this thread, timer will handle the next step
+            return  # Stop execution in this thread, timer will handle the next step
 
         elif node_type == "apiCall":
             data = node.get("data", {})
@@ -162,17 +214,21 @@ class FlowEngine:
             headers = data.get("headers", {})
             body = data.get("body", {})
             response_variable = data.get("response_variable", "api_response")
-            
+
             variables = session.get("variables", {})
             try:
                 url = url.format(**variables)
             except KeyError as e:
-                logger.warning(f"Variable {e} not found for API call URL. Using raw URL.")
+                logger.warning(
+                    f"Variable {e} not found for API call URL. Using raw URL."
+                )
 
             try:
-                response = requests.request(method, url, headers=headers, json=body, timeout=10)
-                response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
-                
+                response = requests.request(
+                    method, url, headers=headers, json=body, timeout=10
+                )
+                response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
+
                 session["variables"][response_variable] = response.json()
                 next_node_id = node.get("next_node_id")
                 logger.info(f"API call to {url} successful for user {phone}.")
@@ -180,7 +236,7 @@ class FlowEngine:
             except requests.exceptions.RequestException as e:
                 logger.error(f"API call failed for user {phone}: {e}")
                 session["variables"][response_variable] = {"error": str(e)}
-                next_node_id = node.get("error_node_id") # Go to error path if defined
+                next_node_id = node.get("error_node_id")  # Go to error path if defined
 
         elif node_type == "sendMedia":
             data = node.get("data", {})
@@ -207,33 +263,50 @@ class FlowEngine:
 
         elif node_type == "aiCondition":
             data = node.get("data", {})
-            prompt_template = data.get("prompt", "Does this message mean 'yes'? Answer with only 'true' or 'false'.")
+            prompt_template = data.get(
+                "prompt",
+                "Does this message mean 'yes'? Answer with only 'true' or 'false'.",
+            )
             input_variable_name = data.get("input_variable", "last_message")
 
             # Get the input text from session variables or the last message
             variables = session.get("variables", {})
-            input_text = message if input_variable_name == "last_message" else variables.get(input_variable_name, "")
+            input_text = (
+                message
+                if input_variable_name == "last_message"
+                else variables.get(input_variable_name, "")
+            )
 
             # Construct the full prompt for the AI
             full_prompt = f"Context: You are an AI assistant in a chatbot flow. Evaluate the following user input and answer the question with only the word 'true' or 'false'.\n\nUser Input: \"{input_text}\"\n\nQuestion: {prompt_template}"
 
             try:
                 # Call the AI service
-                ai_response = self.ai_service.get_completion(full_prompt)
-                logger.info(f"AI condition check for user {phone}. Prompt: '{prompt_template}'. AI response: '{ai_response}'")
+                ai_response = self.ai_service._call_ai(full_prompt)
+                logger.info(
+                    f"AI condition check for user {phone}. Prompt: '{prompt_template}'. AI response: '{ai_response}'"
+                )
 
-                next_node_id = node.get("true_node_id") if "true" in ai_response.lower() else node.get("false_node_id")
+                next_node_id = (
+                    node.get("true_node_id")
+                    if "true" in ai_response.lower()
+                    else node.get("false_node_id")
+                )
 
             except Exception as e:
                 logger.error(f"AI condition node failed for user {phone}: {e}")
-                next_node_id = node.get("false_node_id") # Default to the false path on AI error
+                next_node_id = node.get(
+                    "false_node_id"
+                )  # Default to the false path on AI error
 
         # --- End of node type handling ---
 
         if next_node_id:
             # Schedule next node execution immediately
             # This avoids deep recursion for long chains of non-blocking nodes
-            self.schedule_execution(self._execute_node, args=[phone, message, next_node_id, session, flow])
+            self.schedule_execution(
+                self._execute_node, args=[phone, message, next_node_id, session, flow]
+            )
         else:
             # Flow ended
             with self._lock:
@@ -242,11 +315,13 @@ class FlowEngine:
             self._save_sessions_to_disk()
             logger.info(f"Flow for {phone} has ended.")
 
-    def _evaluate_rule(self, actual_value: Any, operator: str, value_to_compare: Any) -> bool:
+    def _evaluate_rule(
+        self, actual_value: Any, operator: str, value_to_compare: Any
+    ) -> bool:
         """Evaluates a single rule within a condition node."""
         if actual_value is None:
             return operator == "not_exists"
-        
+
         if operator == "exists":
             return True
 

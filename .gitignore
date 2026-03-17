@@ -22,6 +22,7 @@ whatsapp-server/node_modules/
 # Test / cache artifacts
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
 coverage.xml
 htmlcov/
 
