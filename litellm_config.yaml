@@ -1,0 +1,34 @@
+# LiteLLM Configuration for SmartSafe V27
+# This file configures LiteLLM proxy to route AI requests
+
+model_list:
+  # Primary model - grok-code-fast (free, reliable)
+  - model_name: grok-fast
+    litellm_params:
+      model: blackboxai/x-ai/grok-code-fast-1:free
+      api_key: os.environ/BLACKBOX_API_KEY
+
+  # Fallback 1 - blackbox-pro
+  - model_name: blackbox-pro
+    litellm_params:
+      model: blackboxai/blackbox-pro
+      api_key: os.environ.BLACKBOX_API_KEY
+
+  # Fallback 2 - gpt-4o-mini (OpenAI)
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+
+# Default model for all requests
+litellm_settings:
+  drop_params: true
+  set_verbose: false
+
+# Health check endpoint
+router_settings:
+  routing_strategy: latency-based-routing
+  redis_host: localhost
+  redis_port: 6379
+  cache: true
+
