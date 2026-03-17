@@ -316,12 +316,18 @@ class MultiEngine:
         else:
             account = "default"
 
-        can_send, reason = self.risk_brain.can_send_message(number, account=account)
+        # Smart Anti-Ban: Full risk check with proxy/read receipts
+        can_send, reason, anti_ban_settings = self.risk_brain.can_send_message(
+            number, account=account
+        )
+        proxy = anti_ban_settings.get('proxy')
+        read_receipts = anti_ban_settings.get('read_receipts', True)
+        
         if not can_send:
             if self.status_callback:
-                self.status_callback(f"Paused: {reason}")
+                self.status_callback(f"Anti-Ban paused: {reason}")
 
-            if reason.startswith("Hourly") or reason.startswith("Daily"):
+            if "limit" in reason.lower():
                 time.sleep(60)
             else:
                 time.sleep(10)
@@ -338,7 +344,7 @@ class MultiEngine:
                 return MessageResult(
                     contact=contact,
                     success=False,
-                    message="Requeued",
+                    message="Requeued (Anti-Ban)",
                     timestamp=datetime.now(),
                     error=reason,
                 )
@@ -346,7 +352,7 @@ class MultiEngine:
             return MessageResult(
                 contact=contact,
                 success=False,
-                message="Cannot send",
+                message="Blocked by Anti-Ban",
                 timestamp=datetime.now(),
                 error=reason,
             )
@@ -371,11 +377,22 @@ class MultiEngine:
                 error="Message was classified as spam.",
             )
 
+        # Calculate smart delay (message_length for typing sim)
+        msg_length = len(message)
+        delay = self.risk_brain.get_safe_delay(msg_length, randomize=True)
+        time.sleep(delay)
+        
         try:
-            result = self.api.send_message(number, message, account=account)
+            # Anti-Ban send with proxy/read_receipts
+            result = self.api.send_message(
+                number, 
+                message, 
+                account=account,
+                proxy=proxy,
+                read_receipts=read_receipts
+            )
             if result.get("ok"):
                 self.risk_brain.record_message(number, account=account)
-                # Track content for per-account similarity gates when enabled
                 try:
                     self.risk_brain.record_outgoing_content(message, account=account)
                 except Exception:
@@ -385,13 +402,11 @@ class MultiEngine:
                 except Exception:
                     pass
                 if self.status_callback:
-                    self.status_callback(f"Sent to {name}")
-                delay = self.risk_brain.get_safe_delay(randomize=True)
-                time.sleep(delay)
+                    self.status_callback(f"✅ Sent to {name} via proxy:{bool(proxy)}")
                 return MessageResult(
                     contact=contact,
                     success=True,
-                    message=f"Sent successfully (delay: {delay}s)",
+                    message=f"Sent (delay:{delay:.1f}s, proxy:{bool(proxy)})",
                     timestamp=datetime.now(),
                 )
 

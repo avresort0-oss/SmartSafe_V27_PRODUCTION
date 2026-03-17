@@ -1,0 +1,14 @@
+# Docker ignore
+.git
+.gitignore
+*.md
+TODO*
+.env*
+logs/
+whatsapp-server/node_modules/
+whatsapp-server/sessions/
+data/
+.DS_Store
+Thumbs.db
+*.log
+

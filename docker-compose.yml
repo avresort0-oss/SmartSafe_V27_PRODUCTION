@@ -1,0 +1,62 @@
+version: '3.9'
+
+services:
+  python-gui:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    ports:
+      - "8000:8000"  # Webhook API (optional)
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./proxies.json:/app/proxies.json:ro
+    environment:
+      - SMARTSAFE_WEBHOOK_API_ENABLED=true
+      - SMARTSAFE_NODE_HOST=whatsapp-server
+      - SMARTSAFE_NODE_PORT=4000
+    depends_on:
+      whatsapp-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - smartsafe-net
+
+  whatsapp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.node
+    ports:
+      - "4000:4000"  # WhatsApp API
+    volumes:
+      - ./whatsapp-server/sessions:/app/sessions
+      - ./logs:/app/logs:shared
+    environment:
+      - SMARTSAFE_API_KEY=${SMARTSAFE_API_KEY}
+      - SMARTSAFE_REQUIRE_API_KEY=false
+      - SMARTSAFE_CORS_ORIGINS=*
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - smartsafe-net
+
+networks:
+  smartsafe-net:
+    driver: bridge
+
+volumes:
+  data:
+  logs:
+  sessions:
+

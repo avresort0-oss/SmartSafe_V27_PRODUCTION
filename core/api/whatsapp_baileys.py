@@ -150,21 +150,24 @@ class BaileysAPI(NodeService):
         media_path: Optional[str] = None,
         account: Optional[str] = None,
         message_id: Optional[str] = None,
+        proxy: Optional[str] = None,
+        read_receipts: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """
-        Enhanced send helper with improved media support and message tracking.
+        Enhanced send helper with proxy support, read receipt control, improved media.
 
         Args:
             number: Phone number (e.g., "966500000000")
             message: Message content
             media_url: Optional remote/data URL for media attachment
-                       Supports images, videos, audio, and documents based on file extension
             media_path: Optional local media file path (encoded to data URL)
             account: WhatsApp account to use
-            message_id: Optional tracking ID for message correlation and status updates
+            message_id: Optional tracking ID
+            proxy: Optional proxy URL (socks5:// or http://)
+            read_receipts: Control read receipts (None=auto, False=disable)
 
         Returns:
-            Result dict with ok status and messageId for tracking
+            Result dict with ok status and messageId
         """
         normalized = normalize_phone(number)
         if not normalized:
@@ -179,6 +182,33 @@ class BaileysAPI(NodeService):
 
         number = normalized
         final_media_url = media_url
+
+        # Get proxy if enabled
+        if SETTINGS.enable_proxy_rotation and not proxy:
+            from core.engine.proxy_rotator import get_proxy_rotator
+            rotator = get_proxy_rotator()
+            proxy_result = rotator.get_next_proxy(account)
+            if proxy_result:
+                proxy_obj, health = proxy_result
+                proxy = proxy_obj.url
+                logger.debug(f"Using proxy {proxy} for account {account} (healthy: {health['healthy']})")
+
+        # Handle read receipts
+        receipt_setting = read_receipts
+        if receipt_setting is None:
+            receipt_setting = SETTINGS.read_receipt_mode != 'off'
+
+        payload = {
+            "number": number,
+            "message": message or "",
+            "mediaUrl": final_media_url,
+            "messageId": message_id,
+            "readReceipts": receipt_setting
+        }
+        if account:
+            payload["account"] = account
+        if proxy:
+            payload["proxy"] = proxy
 
         # Support local file attachments by converting to data URLs understood by the Node API.
         if media_path:
@@ -390,6 +420,27 @@ class BaileysAPI(NodeService):
         """
         return self.get(f"/message/{message_id}")
     
+    def session_backup(self, account: str, drive_folder: str = "WhatsApp_Sessions") -> Dict[str, Any]:
+        """
+        Auto session backup to Google Drive.
+        
+        Args:
+            account: Account name to backup
+            drive_folder: Google Drive folder name
+            
+        Returns:
+            Backup result with file URL
+        """
+        if not SETTINGS.enable_session_backup:
+            return {"ok": False, "error": "Session backup disabled"}
+
+        payload = {
+            "account": account,
+            "driveFolder": drive_folder,
+            "credsPath": SETTINGS.google_drive_creds_path
+        }
+        return self.post("/session-backup", payload)
+    
     def get_all_tracked_messages(self) -> Dict[str, Any]:
         """
         Get all tracked messages.
@@ -404,7 +455,7 @@ class BaileysAPI(NodeService):
     # ------------------------------------------------------------------
     def connect_account(self, account: str, force_reset: bool = False, timeout: Optional[float] = None) -> Dict[str, Any]:
         """
-        Connect or reconnect a WhatsApp account.
+        Connect or reconnect a WhatsApp account (with auto-backup).
         
         Args:
             account: Account name (e.g., "acc1")

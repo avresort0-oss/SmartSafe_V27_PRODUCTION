@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: smartsafe-whatsapp-server
+    env: node
+    dockerfilePath: ./Dockerfile.node
+    plan: starter
+    ports:
+      - "4000:4000"
+    envVars:
+      - key: SMARTSAFE_API_KEY
+        sync: false
+      - key: SMARTSAFE_REQUIRE_API_KEY
+        value: "false"
+    volumes:
+      - name: sessions
+        path: /app/sessions
+
+  - type: web
+    name: smartsafe-python-gui
+    env: python
+    dockerfilePath: ./Dockerfile.python
+    plan: starter
+    ports:
+      - "8000:8000"
+    envVars:
+      - key: SMARTSAFE_NODE_HOST
+        value: smartsafe-whatsapp-server
+      - key: SMARTSAFE_WEBHOOK_API_ENABLED
+        value: "true"
+    volumes:
+      - name: data
+        path: /app/data
+      - name: logs
+        path: /app/logs
+
+volumes:
+  sessions: {}
+  data: {}
+  logs: {}
+

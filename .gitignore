@@ -24,3 +24,7 @@ whatsapp-server/node_modules/
 .mypy_cache/
 coverage.xml
 htmlcov/
+
+# Docker build cache
+.docker/
+

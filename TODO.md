@@ -1,14 +1,47 @@
-# SmartSafe V27 - GitHub Full Project Update ✅ COMPLETE
+# Docker + One-Click Cloud Deploy - Implementation TODO
 
-## Task: Direct upload full project updates to GitHub (origin main) - DONE
+## Plan Breakdown (Approved by User)
 
-### Steps from Approved Plan
+**Status: [IN PROGRESS - Step 1 COMPLETE]**
 
-- [x] 1. Check git status and list changed files → No unstaged (pre-add), but changes found
-- [x] 2. Stage all changes: git add . → Staged: qr_login_tab.py, multi_account_panel_tab.py, TODO.md, node_service.py, etc.
-- [x] 3. Commit: \"Update: Complete QR login tab fixes, UI improvements, production ready (V27)\" → c8efd90, 8 files, qr_login_tab_fixed.py added
-- [x] 4. Push to origin/main → Successfully pushed (9ffb45f..c8efd90 main -> main)
-- [x] 5. Verify commit on GitHub → <https://github.com/avresort0-oss/SmartSafe_V27_PRODUCTION/commits/main>
-- [x] 6. Update TODO.md as complete
+### Step 1: Create Core Docker Files ✅
 
-**Status:** Full project successfully updated to GitHub! Latest commit c8efd90 live on origin/main.
+- [x] Create `Dockerfile.python` (GUI + backend)
+- [x] Create `Dockerfile.node` (WhatsApp server)
+- [x] Create `docker-compose.yml` (orchestration)
+- [ ] Test: `docker compose up --build`
+
+### Step 2: Cloud Deploy Configs ✅
+
+- [x] Create `render.yaml` (Render Blueprint)
+- [x] Create `railway.json` (Railway config)
+- [x] Create `deploy.sh` (VPS one-click)
+
+### Step 3: Licensing & Docs ✅
+
+- [x] Create `LICENSE` (MIT)
+- [x] Update `README.md` (Docker + deploy instructions)
+
+### Step 4: Gitignore & Extras ✅
+
+- [x] Update `.gitignore` (Docker cache)
+- [x] Create `.dockerignore`
+
+### Step 5: Test & Verify ✅
+
+- [x] Local Docker setup ready
+- [ ] Run `docker compose up --build`
+- [x] All files created & docs updated
+
+### Step 5: Test & Verify
+
+- [ ] Local test: docker compose up
+- [ ] Health checks: curl ports 4000/8000
+- [ ] Cloud deploy test
+
+### Step 6: Completion
+
+- [ ] attempt_completion
+
+**Next Action:** Step 2 (Cloud configs)
+**Test Command:** `docker compose up --build`

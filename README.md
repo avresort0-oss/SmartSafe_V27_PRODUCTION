@@ -1,31 +1,107 @@
-# SmartSafe V27
+# SmartSafe V27 - Professional WhatsApp Automation
 
-SmartSafe V27 is a production-ready WhatsApp automation suite with a Python desktop GUI and a Node.js WhatsApp server (WhiskeySockets/Baileys).
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Docker](https://img.shields.io/badge/Docker-Compose-blue.svg)](https://docs.docker.com/compose/)
+[![Render](https://img.shields.io/badge/Deploy-Render-orange.svg?logo=render)](https://render.com)
+[![Railway](https://img.shields.io/badge/Deploy-Railway-blue.svg?logo=railway)](https://railway.app)
 
-**Prerequisites**
-- Python 3.10+
-- Node.js 18+
+SmartSafe V27 is a **production-ready WhatsApp automation suite** with:
 
-**Quick Start (Windows)**
-1. Copy `.env.example` to `.env` and update values as needed. The Node server reads `.env` from the project root or `whatsapp-server/.env`.
-2. First-time setup and run: `ONE_CLICK_SETUP_AND_RUN.bat`.
-3. Subsequent runs (no installs): `START_SMARTSAFE_ONE_CLICK.bat`.
-4. Run components separately if needed: `START_WHATSAPP_SERVER.bat` and `START_SMARTSAFE_GUI.bat`.
-5. Stop everything: `STOP_SMARTSAFE.bat`.
+- 🎨 Modern Python desktop GUI (CustomTkinter)
+- ⚡ Node.js WhatsApp server (WhiskeySockets/Baileys)
+- 🤖 Multi-account, bulk messaging, analytics
+- 🛡️ Smart anti-ban, proxy rotation, spam detection
 
-**Manual Setup (macOS/Linux)**
-1. Install Python deps: `python -m pip install -r requirements.txt`.
-2. Install Node deps: `npm install` inside `whatsapp-server`.
-3. Start the WhatsApp server: `node whatsapp-server/index.js`.
-4. Start the GUI: `python main.py`.
+## ✨ One-Click Docker Deploy
 
-**Docs**
-- `docs/PROJECT_OVERVIEW.md`
-- `docs/DEVELOPER_GUIDE.md`
-- `docs/AI_QUICK_START.md`
-- `docs/README.md` (WhatsApp server integration details)
+```bash
+git clone <your-repo>
+cd SmartSafe_V27_PRODUCTION
+docker compose up -d --build
+```
 
-**Troubleshooting**
-- Verify system dependencies: `verify_system.py`
-- Check server connectivity: `check_connection.py`
-- Run health checks: `test_health.py`
+- WhatsApp API: `http://localhost:4000`
+- Webhook API: `http://localhost:8000`
+
+## ☁️ Cloud One-Click Deploy
+
+| Platform | Deploy |
+|----------|--------|
+| [Render](https://render.com/deploy-docker?repo=<your-repo>) | Use `render.yaml` |
+| [Railway](https://railway.app/new) | Use `railway.json` |
+| VPS | `./deploy.sh` |
+
+## 🚀 Quick Start (Native)
+
+### Windows
+
+1. Double-click `ONE_CLICK_SETUP_AND_RUN.bat`
+2. Or: `START_SMARTSAFE_ONE_CLICK.bat`
+
+### Docker (Recommended)
+
+```bash
+docker compose up -d
+```
+
+### Manual
+
+```bash
+# Terminal 1: WhatsApp Server
+cd whatsapp-server && npm install && node index.js
+
+# Terminal 2: GUI
+pip install -r requirements.txt
+python main.py
+```
+
+## 📋 Features
+
+- ✅ Multi-Account QR Login
+- ✅ Bulk Sender + Templates
+- ✅ Profile Checker (Bulk)
+- ✅ Smart Balancer & Proxy Rotation
+- ✅ ML Analytics & Spam Detection
+- ✅ Flow Builder & Auto-Reply
+- ✅ Message Tracking Dashboard
+
+## 🛠 Environment Variables
+
+Copy `.env.example` → `.env`:
+
+```
+SMARTSAFE_API_KEY=yourkey
+SMARTSAFE_NODE_HOST=localhost
+SMARTSAFE_WEBHOOK_API_ENABLED=true
+```
+
+## 🔧 VPS Deploy
+
+```bash
+chmod +x deploy.sh
+sudo ./deploy.sh
+```
+
+## 📚 Documentation
+
+- [Project Overview](docs/PROJECT_OVERVIEW.md)
+- [Developer Guide](docs/DEVELOPER_GUIDE.md)
+- [AI Quick Start](docs/AI_QUICK_START.md)
+
+## 🧪 Health Checks
+
+```bash
+curl http://localhost:4000/health  # WhatsApp Server
+curl http://localhost:8000/health  # Webhook API
+```
+
+## 🔒 License
+
+MIT License - see [LICENSE](LICENSE)
+
+## 🙌 Support
+
+[GitHub Issues](https://github.com/yourusername/SmartSafe_V27_PRODUCTION/issues)
+
+---
+⭐ Star on GitHub if useful!
