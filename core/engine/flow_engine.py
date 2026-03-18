@@ -3,7 +3,8 @@ SmartSafe V27 - Flow Execution Engine
 Executes visual chatbot flows created in the Flow Builder.
 """
 
-import requests
+import asyncio
+import aiohttp
 import json
 import logging
 import threading
@@ -12,6 +13,9 @@ from typing import Any, Dict, List, Optional
 
 from core.api.whatsapp_baileys import BaileysAPI
 from core.ai.ai_service import get_ai_service
+from core.automation.translation import get_translation_service
+from core.automation.image_recognition import get_image_service
+from core.automation.voice_bot import get_voice_service
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +33,8 @@ class FlowEngine:
             self._load_sessions_from_disk()
         )
         self._lock = threading.Lock()
+        self._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self._loop)
 
     def _load_sessions_from_disk(self) -> Dict[str, Dict[str, Any]]:
         """Loads active sessions from a JSON file on startup."""
@@ -110,7 +116,7 @@ class FlowEngine:
                 args=[phone, message, start_node_id, new_session, flow],
             )
 
-    def _execute_node(
+    async def _execute_node(
         self, phone: str, message: str, node_id: str, session: Dict, flow: Dict
     ):
         """Executes a node and schedules the next one if applicable."""
@@ -199,13 +205,16 @@ class FlowEngine:
                 logger.info(
                     f"Waiting for {delay}s before executing {next_node_id_for_timer} for {phone}"
                 )
-                # Use a timer to avoid blocking the thread
-                threading.Timer(
-                    delay,
-                    self._execute_node,
-                    args=[phone, message, next_node_id_for_timer, session, flow],
-                ).start()
-            return  # Stop execution in this thread, timer will handle the next step
+
+                # Schedule after delay
+                async def delayed_execute():
+                    await asyncio.sleep(delay)
+                    await self._execute_node(
+                        phone, message, next_node_id_for_timer, session, flow
+                    )
+
+                self._loop.create_task(delayed_execute())
+            return  # Stop execution, task will handle the next step
 
         elif node_type == "apiCall":
             data = node.get("data", {})
@@ -224,19 +233,23 @@ class FlowEngine:
                 )
 
             try:
-                response = requests.request(
-                    method, url, headers=headers, json=body, timeout=10
-                )
-                response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
-
-                session["variables"][response_variable] = response.json()
-                next_node_id = node.get("next_node_id")
-                logger.info(f"API call to {url} successful for user {phone}.")
-
-            except requests.exceptions.RequestException as e:
+                async with aiohttp.ClientSession() as session_http:
+                    async with session_http.request(
+                        method,
+                        url,
+                        headers=headers,
+                        json=body,
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    ) as response:
+                        response.raise_for_status()
+                        result = await response.json()
+                        session["variables"][response_variable] = result
+                        next_node_id = node.get("next_node_id")
+                        logger.info(f"API call to {url} successful for user {phone}.")
+            except aiohttp.ClientError as e:
                 logger.error(f"API call failed for user {phone}: {e}")
                 session["variables"][response_variable] = {"error": str(e)}
-                next_node_id = node.get("error_node_id")  # Go to error path if defined
+                next_node_id = node.get("error_node_id")
 
         elif node_type == "sendMedia":
             data = node.get("data", {})
@@ -299,6 +312,75 @@ class FlowEngine:
                     "false_node_id"
                 )  # Default to the false path on AI error
 
+        elif node_type == "translate":
+            data = node.get("data", {})
+            text_variable = data.get("text_variable", "last_message")
+            target_lang = data.get("target_language", "en")
+            output_variable = data.get("output_variable", "translated_text")
+
+            variables = session.get("variables", {})
+            text_to_translate = variables.get(text_variable, message)
+
+            translation_service = get_translation_service()
+            if translation_service:
+                translated = translation_service.translate_text(
+                    text_to_translate, target_lang
+                )
+                session["variables"][output_variable] = translated
+                logger.info(f"Translated text to {target_lang}: {translated}")
+            else:
+                session["variables"][output_variable] = text_to_translate
+                logger.warning("Translation service not available")
+
+            next_node_id = node.get("next_node_id")
+
+        elif node_type == "imageAnalysis":
+            data = node.get("data", {})
+            image_url = data.get("image_url", "")
+            output_variable = data.get("output_variable", "image_analysis")
+
+            # Download and analyze image
+            try:
+                async with aiohttp.ClientSession() as session_http:
+                    async with session_http.get(image_url) as resp:
+                        if resp.status == 200:
+                            image_data = await resp.read()
+                            image_service = get_image_service()
+                            if image_service:
+                                analysis = image_service.analyze_image(image_data)
+                                session["variables"][output_variable] = analysis
+                                logger.info(f"Image analysis: {analysis}")
+                            else:
+                                session["variables"][output_variable] = {
+                                    "error": "Image service not available"
+                                }
+                        else:
+                            session["variables"][output_variable] = {
+                                "error": f"Failed to download image: {resp.status}"
+                            }
+            except Exception as e:
+                session["variables"][output_variable] = {"error": str(e)}
+                logger.error(f"Image analysis failed: {e}")
+
+            next_node_id = node.get("next_node_id")
+
+        elif node_type == "voiceMessage":
+            data = node.get("data", {})
+            audio_url = data.get("audio_url", "")
+            language = data.get("language", "en-US")
+            output_variable = data.get("output_variable", "transcribed_text")
+
+            voice_service = get_voice_service()
+            if voice_service:
+                # This is simplified - would need to download audio first
+                transcribed = voice_service.process_voice_message(audio_url, language)
+                session["variables"][output_variable] = transcribed
+                logger.info(f"Voice transcribed: {transcribed}")
+            else:
+                session["variables"][output_variable] = "Voice service not available"
+
+            next_node_id = node.get("next_node_id")
+
         # --- End of node type handling ---
 
         if next_node_id:
@@ -359,5 +441,12 @@ class FlowEngine:
         return False
 
     def schedule_execution(self, target, args):
-        """Schedules a function to run in a new thread to prevent blocking."""
-        threading.Thread(target=target, args=args, daemon=True).start()
+        """Schedules a function to run asynchronously."""
+        self._loop.create_task(self._async_execute(target, args))
+
+    async def _async_execute(self, target, args):
+        """Run the target function in the event loop."""
+        try:
+            await target(*args)
+        except Exception as e:
+            logger.error(f"Error in async execution: {e}")

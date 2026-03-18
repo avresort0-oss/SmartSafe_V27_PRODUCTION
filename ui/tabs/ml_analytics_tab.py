@@ -213,13 +213,13 @@ class MLAnalyticsTab(ctk.CTkFrame):
         time.sleep(2)
         while not self.stop_event.is_set():
             try:
-                ui_dispatch(self, self._refresh_analysis)
+                self._refresh_analysis_background()
             except Exception as e:
                 print(f"ML Analytics update error: {e}")
             self.stop_event.wait(5)
 
-    def _refresh_analysis(self):
-        """Refresh risk analysis"""
+    def _refresh_analysis_background(self):
+        """Refresh risk analysis in background"""
         try:
             # Get engine stats
             engine_stats = self.engine_service.get_engine_stats()
@@ -229,42 +229,33 @@ class MLAnalyticsTab(ctk.CTkFrame):
             
             # Update risk score
             risk_score = self.risk_brain.calculate_risk()
-            self.risk_score_card.configure(text=f"{risk_score}/100")
             
             # Update usage
             hourly = risk_stats.get("hourly_used", 0)
             hourly_limit = risk_stats.get("hourly_limit", 50)
-            self.hourly_usage_card.configure(text=f"{hourly}/{hourly_limit}")
             
             daily = risk_stats.get("daily_used", 0)
             daily_limit = risk_stats.get("daily_limit", 400)
-            self.daily_usage_card.configure(text=f"{daily}/{daily_limit}")
             
             # Update delay
             avg_delay = risk_stats.get("avg_delay", 0)
-            self.delay_card.configure(text=f"{avg_delay:.1f}s")
             
             # Update messages
             messages = risk_stats.get("messages_sent_total", 0)
-            self.messages_card.configure(text=str(messages))
             
             # Update pauses
             pauses = risk_stats.get("total_pauses", 0)
-            self.pauses_card.configure(text=str(pauses))
             
             # Update factors
             factors = risk_stats.get("risk_factors", {})
             factors_text = "Risk Factors:\n"
             for key, value in factors.items():
                 factors_text += f"• {key}: {value}\n"
-            self._update_textbox(self.factors_text, factors_text)
             
             # Update ML prediction
             ml_pred = risk_stats.get("risk_factors", {}).get("ml_prediction", "N/A")
-            self._update_textbox(self.ml_prediction_text, f"ML Prediction: {ml_pred}")
             
             ml_conf = risk_stats.get("risk_factors", {}).get("ml_confidence", "N/A")
-            self._update_textbox(self.ml_confidence_text, f"Confidence: {ml_conf}")
             
             # Update recommendations
             recommendation = self.risk_brain.get_recommendation()
@@ -272,10 +263,28 @@ class MLAnalyticsTab(ctk.CTkFrame):
             rec_text += f"Action: {recommendation.get('action', 'N/A')}\n"
             rec_text += f"Score: {recommendation.get('risk_score', 0)}/100\n"
             rec_text += f"Suggested Profile: {recommendation.get('suggested_profile', 'N/A')}\n"
-            self._update_textbox(self.recommendations_text, rec_text)
+            
+            # Dispatch UI updates
+            def _update_ui():
+                self.risk_score_card.configure(text=f"{risk_score}/100")
+                self.hourly_usage_card.configure(text=f"{hourly}/{hourly_limit}")
+                self.daily_usage_card.configure(text=f"{daily}/{daily_limit}")
+                self.delay_card.configure(text=f"{avg_delay:.1f}s")
+                self.messages_card.configure(text=str(messages))
+                self.pauses_card.configure(text=str(pauses))
+                self._update_textbox(self.factors_text, factors_text)
+                self._update_textbox(self.ml_prediction_text, f"ML Prediction: {ml_pred}")
+                self._update_textbox(self.ml_confidence_text, f"Confidence: {ml_conf}")
+                self._update_textbox(self.recommendations_text, rec_text)
+                
+            ui_dispatch(self, _update_ui)
             
         except Exception as e:
             print(f"Error refreshing analysis: {e}")
+
+    def _refresh_analysis(self):
+        """Legacy wrapper"""
+        start_daemon(self._refresh_analysis_background)
 
     def _update_textbox(self, textbox, text):
         """Update textbox content safely"""

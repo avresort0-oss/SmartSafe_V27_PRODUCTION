@@ -20,8 +20,11 @@ import logging
 from typing import Any, Dict, List, Optional
 
 import requests
+import pybreaker
+import time
 
 from core.config import SETTINGS
+from core.monitoring.metrics import record_api_request
 
 NodeResponse = Dict[str, Any]
 
@@ -44,49 +47,17 @@ class NodeService:
         if key:
             self.session.headers.update({"X-API-Key": key})
 
-    def _normalize_error(
-        self,
-        message: str,
-        code: str = "REQUEST_FAILED",
-        details: Optional[Any] = None,
-        status_code: int = 0,
-        retryable: bool = False,
-    ) -> NodeResponse:
-        """
-        Return a normalized error payload shared across all Node API callers.
+        # Circuit breaker for API resilience
+        self.circuit_breaker = pybreaker.CircuitBreaker(
+            fail_max=5,  # Max failures before opening
+            reset_timeout=60,  # Seconds to wait before retrying
+        )
 
-        The shape is intentionally stable so higher‑level components (engine,
-        UI, tests) can rely on common fields:
-
-        - ok: bool
-        - error: human‑readable message
-        - code: machine‑readable error code
-        - status_code: HTTP status code when available (0 for local failures)
-        - retryable: whether the error is considered transient
-        - details: optional extra context
-        """
-        payload: Dict[str, Any] = {
-            "ok": False,
-            "error": message,
-            "code": code,
-            "status_code": status_code,
-            "retryable": retryable,
-        }
-        if details is not None:
-            payload["details"] = details
-        return payload
-
-    def _request(
-        self,
-        method: str,
-        path: str,
-        *,
-        json_data: Optional[Dict[str, Any]] = None,
-        params: Optional[Dict[str, Any]] = None,
-        timeout: Optional[float] = None,
-    ) -> NodeResponse:
+    def _do_request(self, method, path, json_data=None, params=None, timeout=None):
+        """Actual request implementation."""
         url = f"{self.base_url}{path}"
         effective_timeout = timeout if timeout is not None else self.timeout
+        start_time = time.time()
         try:
             resp = self.session.request(
                 method=method.upper(),
@@ -146,13 +117,144 @@ class NodeService:
             "error": data.get("error", f"HTTP {status_code}"),
             "code": data.get("code", "UNKNOWN_ERROR"),
             "status_code": status_code,
-            "retryable": data.get("retryable", status_code in {408, 429, 500, 502, 503, 504})
+            "retryable": data.get(
+                "retryable", status_code in {408, 429, 500, 502, 503, 504}
+            ),
         }
-        
+
         # Preserve other fields from the original response
         for key, value in data.items():
             if key not in normalized:
                 normalized[key] = value
+
+        # Record metrics
+        duration = time.time() - start_time
+        record_api_request(method.upper(), path, status_code, duration)
+
+        return normalized
+
+    def _request(self, method, path, *, json_data=None, params=None, timeout=None):
+        """Request with circuit breaker."""
+        return self.circuit_breaker.call(
+            self._do_request, method, path, json_data, params, timeout
+        )
+
+    def _normalize_error(
+        self,
+        message: str,
+        code: str = "REQUEST_FAILED",
+        details: Optional[Any] = None,
+        status_code: int = 0,
+        retryable: bool = False,
+    ) -> NodeResponse:
+        """
+        Return a normalized error payload shared across all Node API callers.
+
+        The shape is intentionally stable so higher‑level components (engine,
+        UI, tests) can rely on common fields:
+
+        - ok: bool
+        - error: human‑readable message
+        - code: machine‑readable error code
+        - status_code: HTTP status code when available (0 for local failures)
+        - retryable: whether the error is considered transient
+        - details: optional extra context
+        """
+        payload: Dict[str, Any] = {
+            "ok": False,
+            "error": message,
+            "code": code,
+            "status_code": status_code,
+            "retryable": retryable,
+        }
+        if details is not None:
+            payload["details"] = details
+        return payload
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_data: Optional[Dict[str, Any]] = None,
+        params: Optional[Dict[str, Any]] = None,
+        timeout: Optional[float] = None,
+    ) -> NodeResponse:
+        url = f"{self.base_url}{path}"
+        effective_timeout = timeout if timeout is not None else self.timeout
+        start_time = time.time()
+        try:
+            resp = self.session.request(
+                method=method.upper(),
+                url=url,
+                json=json_data,
+                params=params,
+                timeout=effective_timeout,
+            )
+        except requests.exceptions.Timeout:
+            return self._normalize_error(
+                "Request timed out",
+                code="TIMEOUT",
+                status_code=0,
+                retryable=True,
+            )
+        except requests.exceptions.ConnectionError:
+            return self._normalize_error(
+                "Cannot connect to Node server",
+                code="CONNECTION_ERROR",
+                status_code=0,
+                retryable=True,
+            )
+        except requests.exceptions.RequestException as exc:
+            logger.error("NodeService request error: %s", exc, exc_info=True)
+            return self._normalize_error(
+                str(exc),
+                code="REQUEST_EXCEPTION",
+                status_code=0,
+                retryable=False,
+            )
+
+        try:
+            data = resp.json()
+        except ValueError:
+            return self._normalize_error(
+                "Invalid JSON response from server",
+                code="INVALID_JSON",
+                details={"status_code": resp.status_code},
+                status_code=resp.status_code,
+                retryable=False,
+            )
+
+        if not isinstance(data, dict):
+            return self._normalize_error(
+                "Unexpected response payload",
+                code="INVALID_PAYLOAD",
+                details={"status_code": resp.status_code},
+                status_code=resp.status_code,
+                retryable=False,
+            )
+
+        status_code = resp.status_code
+
+        # Always normalize the response shape
+        normalized = {
+            "ok": data.get("ok", False) if status_code < 400 else False,
+            "error": data.get("error", f"HTTP {status_code}"),
+            "code": data.get("code", "UNKNOWN_ERROR"),
+            "status_code": status_code,
+            "retryable": data.get(
+                "retryable", status_code in {408, 429, 500, 502, 503, 504}
+            ),
+        }
+
+        # Preserve other fields from the original response
+        for key, value in data.items():
+            if key not in normalized:
+                normalized[key] = value
+
+        # Record metrics
+        duration = time.time() - start_time
+        record_api_request(method.upper(), path, status_code, duration)
 
         return normalized
 
@@ -164,14 +266,20 @@ class NodeService:
         """Generic GET helper accepting an API path (e.g. '/incoming-messages')."""
         return self._request("GET", path, params=params)
 
-    def post(self, path: str, json_data: Optional[Dict[str, Any]] = None) -> NodeResponse:
+    def post(
+        self, path: str, json_data: Optional[Dict[str, Any]] = None
+    ) -> NodeResponse:
         """Generic POST helper accepting an API path and optional JSON body."""
         return self._request("POST", path, json_data=json_data)
 
-    def put(self, path: str, json_data: Optional[Dict[str, Any]] = None) -> NodeResponse:
+    def put(
+        self, path: str, json_data: Optional[Dict[str, Any]] = None
+    ) -> NodeResponse:
         return self._request("PUT", path, json_data=json_data)
 
-    def delete(self, path: str, params: Optional[Dict[str, Any]] = None) -> NodeResponse:
+    def delete(
+        self, path: str, params: Optional[Dict[str, Any]] = None
+    ) -> NodeResponse:
         return self._request("DELETE", path, params=params)
 
     def get_status(self, account: Optional[str] = None) -> NodeResponse:
@@ -214,14 +322,16 @@ class NodeService:
     def reset_account(self, account: str) -> NodeResponse:
         return self._request("POST", f"/reset/{account}")
 
-    def connect_account(self, account: str, timeout: Optional[float] = None) -> NodeResponse:
+    def connect_account(
+        self, account: str, timeout: Optional[float] = None
+    ) -> NodeResponse:
         """
         Connect or reconnect a WhatsApp account.
-        
+
         Args:
             account: Account name
             timeout: Optional custom timeout in seconds (default: 60s for session creation)
-        
+
         Returns:
             NodeResponse with connection status
         """
@@ -262,7 +372,9 @@ class NodeService:
             payload["account"] = account
         return self._request("POST", "/send-bulk", json_data=payload)
 
-    def profile_check(self, number: str, *, account: Optional[str] = None) -> NodeResponse:
+    def profile_check(
+        self, number: str, *, account: Optional[str] = None
+    ) -> NodeResponse:
         payload: Dict[str, Any] = {"number": number}
         if account:
             payload["account"] = account

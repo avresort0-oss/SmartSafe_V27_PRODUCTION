@@ -12,6 +12,7 @@ const QRCode = require('qrcode');
 const fs = require('fs-extra');
 const path = require('path');
 const pkg = require('./package.json');
+const Agent = require('agentkeepalive');
 
 // Load environment variables from .env if present (project root preferred).
 // This keeps Node and Python configs aligned when using a shared .env file.
@@ -48,6 +49,14 @@ const CORS_ORIGINS = (process.env.SMARTSAFE_CORS_ORIGINS || '')
     .split(',')
     .map((o) => o.trim())
     .filter(Boolean);
+
+// HTTP Agent for connection pooling
+const keepAliveAgent = new Agent({
+    maxSockets: 100,
+    maxFreeSockets: 10,
+    timeout: 60000,
+    freeSocketTimeout: 30000,
+});
 
 // Middleware
 app.use(
