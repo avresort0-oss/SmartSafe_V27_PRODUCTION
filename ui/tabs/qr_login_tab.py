@@ -73,15 +73,6 @@ class Tab(ctk.CTkFrame):
     def _start_background_tasks(self):
         """Start daemon threads for loading and polling"""
         # FIX: Initialize with fallback account for immediate QR display
-        self.current_account = AccountInfo(
-            account_id="default",
-            phone_number="Default Account",
-            device_name="QR Device",
-            status=ConnectionStatus.DISCONNECTED
-        )
-        self.accounts["default"] = self.current_account
-        self._load_account("default")
-        
         self.load_thread = start_daemon(self._load_accounts)
         self.status_poller_thread = start_daemon(self._status_poller)
 
@@ -192,12 +183,45 @@ class Tab(ctk.CTkFrame):
         right_panel = ctk.CTkFrame(content, fg_color="transparent")
         right_panel.grid(row=0, column=1, sticky="nsew")
 
-        # Account Selection
+# Account Selection
         acc_card = SectionCard(right_panel)
         acc_card.pack(fill="x", pady=(0, SPACING["sm"]))
         ctk.CTkLabel(acc_card.inner_frame, text="Active Account", font=heading(TYPOGRAPHY["h3"], "bold")).pack(anchor="w", pady=(0, SPACING["xs"]))
         self.accounts_container = ctk.CTkScrollableFrame(acc_card.inner_frame, height=140, fg_color="transparent")
         self.accounts_container.pack(fill="x")
+
+        # New Session Input
+        new_frame = ctk.CTkFrame(acc_card.inner_frame, fg_color="transparent")
+        new_frame.pack(fill="x", pady=(SPACING["sm"], 0))
+        ctk.CTkLabel(new_frame, text="New Session Name:", font=body(TYPOGRAPHY["caption"])).pack(side="left", padx=(0, SPACING["xs"]))
+        self.new_session_entry = StyledInput(new_frame, width=200, placeholder_text="e.g. my_new_session")
+        self.new_session_entry.pack(side="left", padx=(0, SPACING["xs"]))
+        new_btn = SecondaryButton(new_frame, text="Create & Connect", command=self.create_new_session)
+        new_btn.pack(side="right")
+
+    def create_new_session(self):
+        name = self.new_session_entry.get().strip()
+        if not name:
+            self._show_error("Enter session name")
+            return
+        
+        new_id = f"qr_{name.lower().replace(' ', '_')}"
+        
+        def _work():
+            result = self.api.connect_account(new_id)
+            if result.get("ok"):
+                self.accounts[new_id] = AccountInfo(
+                    account_id=new_id,
+                    phone_number=name,
+                    device_name=f"QR Session ({name})",
+                    status=ConnectionStatus.CONNECTING
+                )
+                ui_dispatch(self, self._update_account_selector)
+                ui_dispatch(self, lambda: self._load_account(new_id))
+            else:
+                ui_dispatch(self, lambda: self._show_error(f"Failed: {result.get('error')}"))
+        
+        start_daemon(_work)
 
         # Connection Details
         info_card = SectionCard(right_panel)
@@ -249,7 +273,7 @@ class Tab(ctk.CTkFrame):
         self.info_labels[key] = v
     
     def _load_accounts(self):
-        """Load real accounts from BaileysAPI with fallback"""
+        """Load real accounts from BaileysAPI + always add New Session option"""
         try:
             result = self.api.get_accounts()
             if not result.get("ok"):
@@ -280,9 +304,13 @@ class Tab(ctk.CTkFrame):
                     status=status
                 )
             
-            # Keep default if no real accounts
-            if "default" not in self.accounts:
-                self.accounts["default"] = self.current_account
+            # Always add New Session option (creates fresh if selected)
+            self.accounts["new_session"] = AccountInfo(
+                account_id="new_session",
+                phone_number="Create Fresh Session",
+                device_name="New QR Device",
+                status=ConnectionStatus.DISCONNECTED
+            )
             
             ui_dispatch(self, self._update_account_selector)
             
@@ -291,7 +319,7 @@ class Tab(ctk.CTkFrame):
                 ui_dispatch(self, lambda: self._load_account(first_id))
             
         except Exception as e:
-            ui_dispatch(self, lambda: self._show_error(f"API error (using default): {str(e)}"))
+            ui_dispatch(self, lambda: self._show_error(f"API error: {str(e)}"))
             ui_dispatch(self, self._update_account_selector)
     
     def _status_poller(self):
@@ -377,16 +405,13 @@ class Tab(ctk.CTkFrame):
             return {"ok": False, "error": str(e)}
 
     def _fetch_qr(self, account_id: str):
-        """Fetch real QR from API with fallback for default account"""
+        """Fetch REAL QR from API - no demo fakes"""
         try:
-            if account_id == "default":
-                # Fallback: Generate demo QR for default account
-                import qrcode
-                qr = qrcode.QRCode(version=1, box_size=10, border=5)
-                qr.add_data(f"whatsapp://connect?session=default&timestamp={int(datetime.now().timestamp())}")
-                qr.make(fit=True)
-                img = qr.make_image(fill_color="black", back_color="white")
-                return img
+            if account_id.startswith("new_session"):
+                # Auto-connect fresh session first
+                connect_result = self.api.connect_account(account_id)
+                if not connect_result.get("ok"):
+                    print(f"Connect failed for {account_id}: {connect_result.get('error')}")
             
             result = self.api.get_qr(account_id)
             if result.get("ok") and result.get("qr"):
@@ -399,12 +424,15 @@ class Tab(ctk.CTkFrame):
                     img = Image.open(io.BytesIO(img_data))
                     return img
                 else:
-                    # Raw base64
+                    # Raw base64 or QR text
                     img_data = base64.b64decode(qr_data)
                     img = Image.open(io.BytesIO(img_data))
                     return img
+            else:
+                print(f"No QR for {account_id}: {result}")
+                return None
         except Exception as e:
-            print(f"QR fetch error for {account_id}: {e}")  # Debug
+            print(f"QR fetch error for {account_id}: {e}")
             return None
 
     def _load_account(self, acc_id: str):
@@ -431,7 +459,7 @@ class Tab(ctk.CTkFrame):
         self.info_labels["account_device"].configure(text=self.current_account.device_name)
         self.info_labels["account_status"].configure(
             text=self.current_account.status.value,
-            text_color=self._get_status_color(self.current_account.status)[0] # Use primary color for text
+            text_color=self._get_status_color(self.current_account.status)[0]
         )
         
         # Reset session timer
@@ -440,6 +468,37 @@ class Tab(ctk.CTkFrame):
         
         if self.on_account_change:
             self.on_account_change(acc_id)
+
+    def create_new_session(self):
+        \"\"\"Create and connect fresh session with custom name.\"\"\"
+        name = self.new_session_entry.get().strip()
+        if not name or name == \"default\":
+            self._show_error(\"Enter valid session name (not 'default')\")
+            return
+        
+        new_id = f\"qr_{name.lower().replace(' ', '_')}\"
+        
+        def _work():
+            # Connect new session (Node creates fresh)
+            result = self.api.connect_account(new_id)
+            if result.get(\"ok\"):
+                # Add/update account list
+                self.accounts[new_id] = AccountInfo(
+                    account_id=new_id,
+                    phone_number=name,
+                    device_name=f\"QR Session ({name})\",
+                    status=ConnectionStatus.CONNECTING
+                )
+                ui_dispatch(self, lambda: [
+                    self._update_account_selector(),
+                    self._load_account(new_id),
+                    lambda: self.header_status.configure(text=\"Scan QR Now\", **self._get_badge_colors_from_tone(\"warning\"))
+                ])
+            else:
+                ui_dispatch(self, lambda: self._show_error(f\"Failed to create: {result.get('error')}\"))
+        
+        start_daemon(_work)
+        self.new_session_entry.delete(0, 'end')
     
     def _show_error(self, message: str):
         """Show error state with better visibility"""
