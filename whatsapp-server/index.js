@@ -1,7 +1,7 @@
 /**
  * SmartSafe V27 - WhatsApp Node.js Server
  * Built on Express + Baileys (WhiskeySockets)
- * Provides REST API for Python GUI
+ * Provides REST API for Python GUI with Queue + Interactive Messages
  */
 
 const express = require('express');
@@ -11,7 +11,27 @@ const pino = require('pino');
 const QRCode = require('qrcode');
 const fs = require('fs-extra');
 const path = require('path');
-const pkg = require('./package.json'); \nconst Agent = require('agentkeepalive'); \n\nconst { Queue } = require('bullmq'); \nconst { createClient } = require('redis'); \nconst rateLimit = require('express-rate-limit'); \n\nconst REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379'; \nconst redisConnection = createClient({ url: REDIS_URL }); \nredisConnection.connect().catch(console.error); \n\nconst messageQueue = new Queue('whatsapp-messages', { \n    connection: redisConnection, \n    defaultJobOptions: { \n        attempts: 3, \n        backoff: { type: 'exponential', delay: 2000 }, \n        removeOnComplete: true\n }\n }); \n\n// Load environment variables from .env if present (project root preferred).
+const pkg = require('./package.json');
+const Agent = require('agentkeepalive');
+
+const { Queue } = require('bullmq');
+const { createClient } = require('redis');
+const rateLimit = require('express-rate-limit');
+
+const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
+const redisConnection = createClient({ url: REDIS_URL });
+redisConnection.connect().catch(console.error);
+
+const messageQueue = new Queue('whatsapp-messages', {
+    connection: redisConnection,
+    defaultJobOptions: {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 2000 },
+        removeOnComplete: true
+    }
+});
+
+// Load environment variables from .env if present (project root preferred).
 // This keeps Node and Python configs aligned when using a shared .env file.
 try {
     const dotenv = require('dotenv');
@@ -187,7 +207,7 @@ function getStore(account) {
     entry = { data, storePath, persist };
     stores.set(account, entry);
     return entry;
-}
+};
 
 // Health check
 app.get('/health', (req, res) => {
@@ -247,380 +267,118 @@ app.get('/stats', (req, res) => {
     });
 });
 
-// Get all accounts
-app.get('/accounts', (req, res) => {
-    const accounts = [];
-    let currentAccount = null;
-    sessions.forEach((sock, name) => {
-        const connected = sock?.user ? true : false;
-        if (!currentAccount && connected) {
-            currentAccount = name;
-        }
-        accounts.push({
-            account: name,
-            name: name,
-            label: name,
-            connected,
-            phone: sock?.user?.id ? sock.user.id.replace('@s.whatsapp.net', '') : null
-        });
-    });
-    if (!currentAccount) {
-        currentAccount = accounts.length ? accounts[0].name : 'default';
-    }
-    res.json({ ok: true, accounts, current_account: currentAccount });
-});
-
-// Get accounts status
-app.get('/accounts-status', (req, res) => {
-    const status = {};
-    sessions.forEach((sock, name) => {
-        status[name] = {
-            connected: sock?.user ? true : false,
-            ready: sock?.ws?.readyState === 'open'
-        };
-    });
-    res.json({ ok: true, status, accounts: status });
-});
-
-// Status for specific account
-app.get('/status', (req, res) => {
-    const requested = req.query.account;
-    let account = normalizeAccount(requested);
-    if (!requested) {
-        // Pick the first connected account, then fallback to any session/default.
-        for (const [name, sock] of sessions) {
-            if (sock?.user) {
-                account = name;
-                break;
-            }
-        }
-        if (!account || account === 'default') {
-            const first = sessions.keys().next();
-            account = first && !first.done ? first.value : 'default';
-        }
-    }
-
-    const sock = sessions.get(account);
-    if (!sock) {
-        return res.json({
-            ok: false,
-            error: 'Account not connected',
-            code: 'ACCOUNT_NOT_CONNECTED',
-            account,
-            connected: false,
-            status: 'DISCONNECTED'
-        });
-    }
-
-    const connected = sock?.user ? true : false;
-    const phone = sock?.user?.id?.replace('@s.whatsapp.net', '') || null;
-
-    res.json({
-        ok: true,
+// POWERFUL /SEND (Text + Media + Buttons + List + Reaction + Queue)
+app.post('/send', async (req, res) => {
+    const {
+        number,
+        message,
         account,
-        status: connected ? 'READY' : 'DISCONNECTED',
-        connected,
-        user: sock?.user?.id || null,
-        phone,
-        number: phone,
-        device: {
-            number: phone,
-            model: sock?.user?.device || null,
-            platform: sock?.user?.platform || null,
-            login_time: null,
-            last_sync: null,
-        },
-    });
-});
+        media_url,
+        buttons,
+        list,
+        reaction,
+        messageId
+    } = req.body;
 
-// Generate QR for account
-app.get('/qr/:account?', async (req, res) => {
-    const account = normalizeAccount(req.params.account || req.query.account);
+    if (!number) return res.json({ ok: false, error: 'Number required' });
 
-    const sock = sessions.get(account);
-    if (!sock) {
-        return res.json({ ok: false, error: 'Session not initialized' });
-    }
-
-    try {
-        // Check if already connected
-        if (sock.user) {
-            return res.json({
-                ok: true,
-                account,
-                connected: true,
-                qr: null,
-                message: 'Already connected'
-            });
-        }
-
-        // Generate QR from existing connection if available
-        const qr = sock.qr || '';
-        if (qr) {
-            // Generate QR image
-            try {
-                const qrImage = await QRCode.toDataURL(qr);
-                return res.json({
-                    ok: true,
-                    account,
-                    connected: false,
-                    qr: qrImage,
-                    qr_raw: qr,
-                    message: 'Scan QR code with WhatsApp'
-                });
-            } catch (e) {
-                return res.json({
-                    ok: true,
-                    account,
-                    connected: false,
-                    qr_raw: qr,
-                    message: 'Scan QR code with WhatsApp'
-                });
-            }
-        }
-
-        res.json({ ok: false, account, error: 'No QR available yet' });
-    } catch (err) {
-        res.json({ ok: false, account, error: err.message });
-    }
-});
-
-// Create/update account session
-app.post('/connect/:account', async (req, res) => {
-    const account = normalizeAccount(req.params.account);
-
-    if (sessions.has(account)) {
-        const sock = sessions.get(account);
-        if (sock && sock.user) {
-            return res.json({ ok: true, account, connected: true, message: 'Already connected' });
-        }
-
-        // A connection is already in progress. The client should check for QR/status separately.
-        // This avoids creating a duplicate session which can cause race conditions.
-        return res.json({ ok: true, account, status: 'pending', message: 'Connection already in progress.' });
-    }
-
-    try {
-        await createSession(account, res);
-    } catch (err) {
-        res.status(500).json({ ok: false, error: err.message, code: "CREATE_SESSION_ERROR" });
-    }
-});
-
-// Reset account session
-app.post('/reset/:account', async (req, res) => {
-    const account = normalizeAccount(req.params.account);
-
-    try {
-        // Close existing session
-        const sock = sessions.get(account);
-        if (sock) {
-            try { sock.end(undefined); } catch (e) { }
-            sessions.delete(account);
-        }
-
-        // Delete session files
-        const sessionPath = path.join(SESSION_DIR, account);
-        if (fs.existsSync(sessionPath)) {
-            fs.removeSync(sessionPath);
-        }
-
-        // Create new session
-        await createSession(account, res);
-    } catch (err) {
-        res.json({ ok: false, error: err.message });
-    }
-});
-
-// Set active account
-app.post('/set-account', (req, res) => {
-    const { account } = req.body;
-    if (!account) {
-        return res.json({ ok: false, error: 'Account required' });
-    }
-
-    const normalized = normalizeAccount(account);
-    if (!sessions.has(normalized)) {
+    const accountName = normalizeAccount(account);
+    const sock = sessions.get(accountName);
+    if (!sock || !sock.user) {
         return res.json({ ok: false, error: 'Account not connected' });
     }
 
-    res.json({ ok: true, account: normalized });
-});
+    const jid = number.includes('@') ? number : `${number}@s.whatsapp.net`;
 
-// Logout account
-app.get('/logout', (req, res) => {
-    const account = logoutAccount(req.query.account);
-    res.json({ ok: true, account, message: 'Logged out' });
-});
+    let msgOptions = {};
+    let reactionData = null;
 
-// Logout account (POST alias for compatibility)
-app.post('/logout', (req, res) => {
-    const account = logoutAccount(req.body?.account || req.query?.account);
-    res.json({ ok: true, account, message: 'Logged out' });
-});
-
-// Send message
-app.post('/send', async (req, res) => {
-    const { number, message, account, media_url, messageId } = req.body;
-
-    if (!number) {
-        return res.json({ ok: false, error: 'Number required' });
+    // 1. Normal text + media
+    if (message) msgOptions.text = message;
+    if (media_url) {
+        if (media_url.match(/\.(jpg|jpeg|png|gif|webp)$/i)) msgOptions.image = { url: media_url };
+        else if (media_url.match(/\.(mp4|webm)$/i)) msgOptions.video = { url: media_url };
+        else if (media_url.match(/\.(mp3|opus)$/i)) msgOptions.audio = { url: media_url };
+        else msgOptions.document = { url: media_url };
     }
 
-    const accountName = normalizeAccount(account);
-    const metrics = getMetrics(accountName);
-    const sock = sessions.get(accountName);
-    if (!sock || !sock.user) {
-        metrics.errors += 1;
-        metrics.last_error = 'Not connected';
-        return res.json({
-            ok: false,
-            error: 'Not connected',
-            code: 'ACCOUNT_NOT_CONNECTED',
-            connected: false,
-            account: accountName,
-            number
-        });
+    // 2. Buttons
+    if (buttons && Array.isArray(buttons) && buttons.length > 0) {
+        msgOptions.buttons = buttons.map((btn, i) => ({
+            buttonId: `btn_${i}`,
+            buttonText: { displayText: btn.text || btn },
+            type: 1
+        }));
+        msgOptions.footer = "SmartSafe V27 PRO";
+        msgOptions.headerType = 1;
     }
 
-    try {
-        const jid = number.includes('@') ? number : `${number}@s.whatsapp.net`;
-
-        let sentMsg = null;
-
-        // Prepare message options
-        const msgOptions = {};
-        if (message) msgOptions.text = message;
-
-        if (media_url) {
-            // Send media message - detect type from URL or data URL
-            if (media_url.startsWith('data:')) {
-                const mime = media_url.split(';')[0].replace('data:', '').toLowerCase();
-                if (mime.startsWith('image/')) {
-                    msgOptions.image = { url: media_url };
-                } else if (mime.startsWith('video/')) {
-                    msgOptions.video = { url: media_url };
-                } else if (mime.startsWith('audio/')) {
-                    msgOptions.audio = { url: media_url };
-                } else {
-                    msgOptions.document = { url: media_url };
-                }
-            } else if (media_url.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-                msgOptions.image = { url: media_url };
-            } else if (media_url.match(/\.(mp4|webm|3gp)$/i)) {
-                msgOptions.video = { url: media_url };
-            } else if (media_url.match(/\.(mp3|wav|ogg|opus)$/i)) {
-                msgOptions.audio = { url: media_url };
-            } else {
-                msgOptions.document = { url: media_url };
-            }
-        }
-
-        sentMsg = await sock.sendMessage(jid, msgOptions);
-
-        const resultMsgId = sentMsg?.key?.id || messageId || Date.now().toString();
-
-        // Store message for tracking
-        messageStore.set(resultMsgId, {
-            id: resultMsgId,
-            to: number,
-            phoneNumber: number,
-            content: message,
-            status: 'sent',
-            account: accountName,
-            timestamp: Date.now()
-        });
-        persistMessages();
-
-        metrics.messages_sent += 1;
-        metrics.last_sent_at = Date.now();
-
-        res.json({
-            ok: true,
-            account: accountName,
-            number,
-            messageId: resultMsgId,
-            message_id: resultMsgId,
-            status: 'sent',
-            timestamp: Date.now()
-        });
-    } catch (err) {
-        logger.error('Send error:', err);
-        metrics.errors += 1;
-        metrics.last_error = err.message;
-        res.json({ ok: false, error: err.message, account: accountName, number });
-    }
-});
-
-// Send bulk messages
-app.post('/send-bulk', async (req, res) => {
-    const { messages, account } = req.body;
-
-    if (!messages || !Array.isArray(messages)) {
-        return res.json({ ok: false, error: 'Messages array required' });
+    // 3. List (Interactive Menu)
+    if (list && list.sections) {
+        msgOptions.text = message || "Choose option:";
+        msgOptions.sections = list.sections;
+        msgOptions.buttonText = list.buttonText || "Select";
+        msgOptions.listType = 1;
+        msgOptions.footer = "SmartSafe V27 PRO";
     }
 
-    const accountName = normalizeAccount(account);
-    const metrics = getMetrics(accountName);
-    const sock = sessions.get(accountName);
-    if (!sock || !sock.user) {
-        metrics.errors += 1;
-        metrics.last_error = 'Not connected';
-        return res.json({
-            ok: false,
-            error: 'Not connected',
-            code: 'ACCOUNT_NOT_CONNECTED',
-            connected: false,
-            account: accountName
-        });
+    // 4. Reaction
+    if (reaction && reaction.emoji && reaction.originalMessageId) {
+        reactionData = { emoji: reaction.emoji, originalKey: { id: reaction.originalMessageId, remoteJid: jid, fromMe: true } };
     }
 
-    const results = [];
+    const jobId = messageId || `msg_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
-    for (const msg of messages) {
-        try {
-            const jid = msg.number.includes('@') ? msg.number : `${msg.number}@s.whatsapp.net`;
-            const sent = await sock.sendMessage(jid, { text: msg.message || '' });
-            const resultMsgId = sent?.key?.id || Date.now().toString();
-            messageStore.set(resultMsgId, {
-                id: resultMsgId,
-                to: msg.number,
-                phoneNumber: msg.number,
-                content: msg.message || '',
-                status: 'sent',
-                account: accountName,
-                timestamp: Date.now()
-            });
-            persistMessages();
-            metrics.messages_sent += 1;
-            metrics.last_sent_at = Date.now();
-            results.push({
-                number: msg.number,
-                ok: true,
-                account: accountName,
-                messageId: resultMsgId,
-                message_id: resultMsgId
-            });
-        } catch (err) {
-            metrics.errors += 1;
-            metrics.last_error = err.message;
-            results.push({
-                number: msg.number,
-                ok: false,
-                account: accountName,
-                error: err.message
-            });
-        }
-    }
+    // Queue job
+    await messageQueue.add('send', {
+        account: accountName,
+        jid,
+        msgOptions: Object.keys(msgOptions).length ? msgOptions : { text: message || " " },
+        messageId: jobId,
+        reactionData
+    }, { delay: Math.random() * 2000 + 1000 });
 
-    const success = results.filter(r => r.ok).length;
     res.json({
         ok: true,
-        account: accountName,
-        sent: success,
-        failed: results.length - success,
-        results
+        message: reactionData ? 'Reaction queued' : 'Message queued (buttons/list/media)',
+        jobId,
+        status: 'queued',
+        type: reactionData ? 'reaction' : (buttons ? 'buttons' : list ? 'list' : 'text/media')
     });
+});
+
+// Send bulk messages (legacy + queued)
+app.post('/send-bulk', async (req, res) => {
+    const { numbers, message, account, media_url, buttons, list } = req.body;
+    if (!Array.isArray(numbers) || numbers.length === 0) {
+        return res.json({ ok: false, error: 'Numbers array required' });
+    }
+
+    const accountName = normalizeAccount(account);
+    for (const num of numbers) {
+        const jid = num.includes('@') ? num : `${num}@s.whatsapp.net`;
+        const msgOptions = { text: message };
+        if (media_url) {
+            if (media_url.match(/\.(jpg|jpeg|png|gif|webp)$/i)) msgOptions.image = { url: media_url };
+            else if (media_url.match(/\.(mp4|webm)$/i)) msgOptions.video = { url: media_url };
+            else msgOptions.document = { url: media_url };
+        }
+        // buttons/list same as /send
+        if (buttons) msgOptions.buttons = buttons.map((btn, i) => ({
+            buttonId: `btn_${i}`,
+            buttonText: { displayText: btn.text || btn },
+            type: 1
+        }));
+        if (list && list.sections) {
+            msgOptions.sections = list.sections;
+            msgOptions.buttonText = list.buttonText || "Select";
+            msgOptions.listType = 1;
+        }
+
+        await messageQueue.add('send', { account: accountName, jid, msgOptions });
+    }
+
+    res.json({ ok: true, queued: numbers.length, message: 'Bulk queued' });
 });
 
 // Profile check
@@ -1011,4 +769,6 @@ process.on('SIGINT', async () => {
     process.exit(0);
 });
 
-module.exports = { app, sessions, messageStore, persistMessages, getMetrics, normalizeAccount };
+// Export for worker.js
+module.exports = { app, sessions, messageStore, persistMessages, getMetrics, normalizeAccount, messageQueue };
+
